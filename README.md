@@ -66,7 +66,7 @@ Models are downloaded automatically on first use and cached for subsequent runs.
 
    ```bash
    cd `gtn config show workspace_directory`
-   git clone --recurse-submodules https://github.com/griptape-ai/griptape-nodes-corridorkey-library.git
+   git clone --recurse-submodules https://github.com/griptape-ai/griptape-nodes-library-corridorkey.git
    ```
 
 2. **Add the library** in the Griptape Nodes Editor:
@@ -75,7 +75,7 @@ Models are downloaded automatically on first use and cached for subsequent runs.
    - Click on *+ Add Library* at the bottom of the settings panel
    - Enter the path to the library JSON file:
      ```
-     <workspace_directory>/griptape-nodes-corridorkey-library/griptape_nodes_corridorkey_library/griptape-nodes-library.json
+     <workspace_directory>/griptape-nodes-library-corridorkey/griptape_nodes_library_corridorkey/griptape-nodes-library.json
      ```
    - You can check your workspace directory with `gtn config show workspace_directory`
    - Close the Settings Panel

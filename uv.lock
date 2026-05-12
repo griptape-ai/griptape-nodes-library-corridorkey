@@ -294,7 +294,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "griptape-nodes-corridorkey-library"
+name = "griptape-nodes-library-corridorkey"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
