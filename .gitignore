@@ -215,3 +215,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+.scratch/
+
+# Advanced library install sentinel
+.installed_commit

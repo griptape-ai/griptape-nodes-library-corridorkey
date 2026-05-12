@@ -1,0 +1,3 @@
+[submodule "griptape_nodes_corridorkey_library/CorridorKey"]
+	path = griptape_nodes_corridorkey_library/CorridorKey
+	url = https://github.com/nikopueringer/CorridorKey
