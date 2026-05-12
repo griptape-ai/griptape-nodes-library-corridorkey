@@ -2,7 +2,7 @@
 name = "griptape-nodes-library-corridorkey"
 version = "0.1.0"
 description = "Griptape Nodes library wrapping the CorridorKey neural green/blue screen keying model."
-authors = [{ name = "Your Name", email = "you@example.com" }]
+authors = [{ name = "Griptape, Inc.", email = "hello@griptape.ai" }]
 readme = "README.md"
 requires-python = "~=3.12.0"
 dependencies = ["griptape-nodes"]
