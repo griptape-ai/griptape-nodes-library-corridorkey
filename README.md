@@ -134,4 +134,6 @@ The first run will download the selected CorridorKey checkpoint (~300 MB) and, i
 
 ## License
 
-This library is provided under the Apache License 2.0. The bundled CorridorKey submodule is subject to its own license: CC-BY-NC-SA-4.0 with a Corridor-authored commercial-use clarification that grants commercial use of outputs but forbids reselling or exposing CorridorKey itself as a paid/API service without prior agreement with Corridor Digital. See [nikopueringer/CorridorKey](https://github.com/nikopueringer/CorridorKey) for the full license text.
+This library is distributed under the **Corridor Key Licence** (Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International, with the Corridor Key Additional Terms and Conditions). This matches the license of the upstream [CorridorKey](https://github.com/nikopueringer/CorridorKey) project, as required by the share-alike clause of that licence. See the [LICENSE](./LICENSE) file in this repository for the full text.
+
+The "CorridorKey" name and any associated trademarks remain the property of Corridor Digital.
