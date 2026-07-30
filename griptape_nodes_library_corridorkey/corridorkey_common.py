@@ -164,12 +164,59 @@ def save_video_artifact(video_bytes: bytes, suffix: str):
     return VideoUrlArtifact(url)
 
 
+def _patch_timm_hiera_view_bug() -> None:
+    """Patch timm's Hiera MaskUnitAttention.forward to use .reshape() instead of .view().
+
+    CorridorKeyModule's encoder is a timm "hiera_base_plus_224" model. Its
+    MaskUnitAttention.forward() does `q.view(...)` on a tensor produced by a prior
+    `.permute()`, which requires strides .view() can't always satisfy -- this raises
+    "view size is not compatible with input tensor's size and stride" on MPS (the
+    stride layout that trips it doesn't come up on CPU/CUDA). .reshape() is a
+    drop-in replacement (it only copies when a view isn't possible), so patch the
+    pip-installed timm module in place rather than vendoring a modified copy.
+
+    The same non-contiguous q/k/v also trips MPS's internal
+    F.scaled_dot_product_attention kernel (it does its own .view() on the inputs),
+    so q/k/v are made contiguous before that call too.
+    """
+    from timm.models import hiera
+
+    if getattr(hiera.MaskUnitAttention, "_corridorkey_reshape_patched", False):
+        return
+
+    def patched_forward(self, x):
+        import torch.nn.functional as torch_functional
+
+        b, n, _ = x.shape
+        num_windows = (n // (self.q_stride * self.window_size)) if self.use_mask_unit_attn else 1
+        qkv = self.qkv(x).reshape(b, -1, num_windows, 3, self.heads, self.head_dim).permute(3, 0, 4, 2, 1, 5)
+        q, k, v = qkv.unbind(0)
+
+        if self.q_stride > 1:
+            q = q.reshape(b, self.heads, num_windows, self.q_stride, -1, self.head_dim).amax(dim=3)
+
+        if self.fused_attn:
+            x = torch_functional.scaled_dot_product_attention(q.contiguous(), k.contiguous(), v.contiguous())
+        else:
+            attn = (q * self.scale) @ k.transpose(-1, -2)
+            attn = attn.softmax(dim=-1)
+            x = attn @ v
+
+        x = x.transpose(1, 3).reshape(b, -1, self.dim_out)
+        return self.proj(x)
+
+    hiera.MaskUnitAttention.forward = patched_forward
+    hiera.MaskUnitAttention._corridorkey_reshape_patched = True
+
+
 def load_engine(model_repo_id: str, device: str, img_size: int):
     """Load and cache the CorridorKey engine for (repo, device, img_size)."""
     # Deferred imports: these resolve only after the advanced library has
     # pip-installed CorridorKeyModule and added the submodule root to sys.path.
     from CorridorKeyModule import backend as ck_backend
     from CorridorKeyModule.backend import create_engine
+
+    _patch_timm_hiera_view_bug()
 
     # Upstream bug: backend.py defines CHECKPOINT_DIR twice (line 22 absolute,
     # line 74 relative). The second definition wins at import time and points
@@ -204,7 +251,11 @@ def load_birefnet(birefnet_repo_id: str, device: str):
     """Load and cache a BiRefNetHandler for (repo, device)."""
     # Deferred import: BiRefNetModule is exposed via sys.path.insert in the
     # advanced library loader, since it isn't included in the hatch wheel.
+    import warnings
+
+    from BiRefNetModule import wrapper as birefnet_wrapper
     from BiRefNetModule.wrapper import BiRefNetHandler
+    from huggingface_hub.utils.tqdm import disable_progress_bars, enable_progress_bars
 
     key = (birefnet_repo_id, device)
     if key in _birefnet_cache:
@@ -212,7 +263,30 @@ def load_birefnet(birefnet_repo_id: str, device: str):
 
     usage = BIREFNET_USAGE_BY_REPO[birefnet_repo_id]
     logger.info("Loading BiRefNet handler: repo=%s usage=%s device=%s", birefnet_repo_id, usage, device)
-    handler = BiRefNetHandler(device=device, usage=usage)
+
+    # Upstream bug: BiRefNetModule.wrapper hardcodes trust_remote_code=False, but
+    # BiRefNet's HF checkpoints ship custom modeling code (birefnet.py) that
+    # AutoModelForImageSegmentation cannot load without it. wrapper.py is a vendored
+    # git submodule, so patch its from_pretrained rather than editing it directly.
+    original_from_pretrained = birefnet_wrapper.AutoModelForImageSegmentation.from_pretrained
+
+    def _from_pretrained_trusted(*args, **kwargs):
+        kwargs["trust_remote_code"] = True
+        return original_from_pretrained(*args, **kwargs)
+
+    birefnet_wrapper.AutoModelForImageSegmentation.from_pretrained = _from_pretrained_trusted
+    # Also silence the deprecated local_dir_use_symlinks warning and the download
+    # progress bar wrapper.py's snapshot_download call emits straight to stderr,
+    # bypassing `logging` and showing up unformatted in the node's log.
+    disable_progress_bars()
+    try:
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*local_dir_use_symlinks.*")
+            handler = BiRefNetHandler(device=device, usage=usage)
+    finally:
+        birefnet_wrapper.AutoModelForImageSegmentation.from_pretrained = original_from_pretrained
+        enable_progress_bars()
+
     _birefnet_cache[key] = handler
     return handler
 
