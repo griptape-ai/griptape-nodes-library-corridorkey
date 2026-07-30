@@ -209,6 +209,46 @@ def _patch_timm_hiera_view_bug() -> None:
     hiera.MaskUnitAttention._corridorkey_reshape_patched = True
 
 
+def _patch_connected_components_mps_race() -> None:
+    """Patch CorridorKeyModule's connected_components to fix an MPS boolean-index race.
+
+    connected_components() (color_utils.py) evaluates `mask == 1` twice per loop
+    iteration -- once to select the assignment target, once to gather from the
+    max_pool2d result -- across up to `max_iterations` iterations. On MPS, the two
+    evaluations occasionally disagree on their true-count (an async-execution race
+    in the MPS boolean-indexing kernel), raising "shape mismatch: value tensor ...
+    cannot be broadcast to indexing result ...". `mask` never changes across the
+    loop, so hoisting a single `mask == 1` evaluation out of the loop and reusing it
+    for both sides removes the race.
+    """
+    from CorridorKeyModule.core import color_utils
+
+    if getattr(color_utils, "_corridorkey_cc_race_patched", False):
+        return
+
+    def patched_connected_components(mask, min_component_distance=1, max_iterations=100):
+        bs, _, h, w = mask.shape
+        comp = (torch.randperm(bs * w * h, device=mask.device, dtype=torch.float32) + 1.1).view(mask.shape)
+        idx = mask == 1
+        comp[~idx] = 0
+
+        for _ in range(max_iterations):
+            comp[idx] = color_utils.F.max_pool2d(
+                comp, kernel_size=(2 * min_component_distance) + 1, stride=1, padding=min_component_distance
+            )[idx]
+
+        comp = comp.long()
+        unique_labels = torch.unique(comp)
+        if unique_labels[0] != 0:
+            unique_labels = torch.cat([torch.tensor([0], device=mask.device), unique_labels])
+        label_map = torch.zeros(unique_labels.max().item() + 1, dtype=torch.long, device=mask.device)
+        label_map[unique_labels] = torch.arange(len(unique_labels), device=mask.device)
+        return label_map[comp]
+
+    color_utils.connected_components = patched_connected_components
+    color_utils._corridorkey_cc_race_patched = True
+
+
 def load_engine(model_repo_id: str, device: str, img_size: int):
     """Load and cache the CorridorKey engine for (repo, device, img_size)."""
     # Deferred imports: these resolve only after the advanced library has
@@ -217,6 +257,7 @@ def load_engine(model_repo_id: str, device: str, img_size: int):
     from CorridorKeyModule.backend import create_engine
 
     _patch_timm_hiera_view_bug()
+    _patch_connected_components_mps_race()
 
     # Upstream bug: backend.py defines CHECKPOINT_DIR twice (line 22 absolute,
     # line 74 relative). The second definition wins at import time and points
