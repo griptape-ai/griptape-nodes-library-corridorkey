@@ -6,7 +6,7 @@
         "author": "Griptape, Inc.",
         "description": "Neural-network-based green/blue screen keying tool by Niko Pueringer / Corridor Digital. Takes an RGB frame plus a coarse alpha hint and outputs a clean straight alpha matte, a despilled foreground, and an optional checkerboard composite preview. Distributed as green-screen and blue-screen GreenFormer (Hiera + refiner) checkpoints with auto-download from HuggingFace.",
         "library_version": "0.1.0",
-        "engine_version": "0.84.0",
+        "engine_version": "0.89.0",
         "tags": [
             "Griptape",
             "AI",
@@ -37,7 +37,8 @@
                 "easydict",
                 "imageio",
                 "matplotlib",
-                "av"
+                "av",
+                "git+https://github.com/griptape-ai/griptape-nodes-library-openexr"
             ],
             "pip_install_flags": [
                 "--preview",
@@ -68,6 +69,15 @@
                 "category": "corridorkey",
                 "description": "Runs the full CorridorKey neural keying pipeline on a single image frame. Takes an RGB image and an optional coarse alpha-hint mask; if no hint is supplied, BiRefNet is used internally to generate one. Produces a clean straight alpha matte, a despilled sRGB foreground, a linear premultiplied RGBA composite, and an optional composite-on-checkerboard preview. Supports both green-screen and blue-screen checkpoints with auto-download from HuggingFace.",
                 "display_name": "CorridorKey Inference"
+            }
+        },
+        {
+            "class_name": "CorridorKeyVideoInference",
+            "file_path": "corridorkey_video_inference.py",
+            "metadata": {
+                "category": "corridorkey",
+                "description": "Runs the CorridorKey neural keying pipeline across every frame of a video clip or image sequence. Generates per-frame alpha hints via BiRefNet (default, works on any GPU), GVM (temporally-consistent hints, requires ~80GB VRAM on a single GPU and a large one-time HuggingFace download), or VideoMaMa (temporally-consistent hints guided by a user-supplied rough per-frame mask, also a large one-time download). Despills/refines each frame and writes alpha, foreground, and composite as either mp4 videos or an EXR image sequence.",
+                "display_name": "CorridorKey Video Inference"
             }
         }
     ]
