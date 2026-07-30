@@ -59,12 +59,13 @@ BIREFNET_USAGE_BY_REPO = {
     "ZhengPeng7/BiRefNet": "General",
 }
 
-# GVM has a single published checkpoint, so unlike CorridorKey/BiRefNet it has
-# no HuggingFaceRepoParameter dropdown -- it's downloaded on first use.
+# GVM has a single published checkpoint. Like CorridorKey/BiRefNet it gets a
+# HuggingFaceRepoParameter dropdown; the weights are resolved from the standard
+# HF hub cache rather than downloaded into a custom local_dir.
 GVM_MODEL_REPO_ID = "geyongtao/gvm"
 
-# VideoMaMa likewise has no HuggingFaceRepoParameter dropdown -- it needs two
-# separate repos downloaded into a specific local layout on first use.
+# VideoMaMa needs two separate repos, each with its own HuggingFaceRepoParameter
+# dropdown; both are resolved from the standard HF hub cache.
 VIDEOMAMA_UNET_REPO_ID = "SammyLim/VideoMaMa"
 VIDEOMAMA_BASE_REPO_ID = "stabilityai/stable-video-diffusion-img2vid-xt"
 
@@ -73,8 +74,8 @@ VIDEOMAMA_BASE_REPO_ID = "stabilityai/stable-video-diffusion-img2vid-xt"
 # torch.compile autotuning. Keyed the same way the per-class caches used to be.
 _engine_cache: dict[tuple[str, str, int], Any] = {}
 _birefnet_cache: dict[tuple[str, str], Any] = {}
-_gvm_cache: dict[str, Any] = {}
-_videomama_cache: dict[str, Any] = {}
+_gvm_cache: dict[tuple[str, str], Any] = {}
+_videomama_cache: dict[tuple[str, str, str], Any] = {}
 
 
 def get_device() -> str:
@@ -253,81 +254,54 @@ def run_birefnet(handler, image_rgb_float: np.ndarray) -> np.ndarray:
     return np.asarray(mask_pil, dtype=np.float32) / 255.0
 
 
-def load_gvm_processor(device: str):
-    """Load and cache a GVMProcessor for `device`, downloading its weights on first use.
+def load_gvm_processor(repo_id: str, device: str):
+    """Load and cache a GVMProcessor for (repo, device).
 
-    GVM has a single published checkpoint (unlike CorridorKey/BiRefNet, which
-    offer variant dropdowns), so there's no HuggingFaceRepoParameter for it --
-    weights are fetched lazily the same way BiRefNetModule.wrapper fetches its
-    own weights: a flat `local_dir` snapshot download, not the HF hub cache.
+    Weights are resolved from the standard HF hub cache -- the GVM
+    HuggingFaceRepoParameter dropdown gates node execution until the user has
+    downloaded the model via Model Manager, so by the time this runs the repo
+    is already cached and `local_files_only=True` never touches the network.
     """
-    import gvm_core
     from gvm_core.wrapper import GVMProcessor
     from huggingface_hub import snapshot_download
 
-    if device in _gvm_cache:
-        return _gvm_cache[device]
+    key = (repo_id, device)
+    if key in _gvm_cache:
+        return _gvm_cache[key]
 
-    if gvm_core.__file__ is None:
-        raise RuntimeError("gvm_core module has no __file__ (unexpected import mechanism)")
-    weights_dir = Path(gvm_core.__file__).parent / "weights"
-    required_subdirs = ("vae", "scheduler", "unet")
-    if not all((weights_dir / subdir).is_dir() for subdir in required_subdirs):
-        logger.info(
-            "Downloading GVM weights from %s to %s (large one-time download)...",
-            GVM_MODEL_REPO_ID,
-            weights_dir,
-        )
-        snapshot_download(repo_id=GVM_MODEL_REPO_ID, local_dir=str(weights_dir))
-        logger.info("GVM weights downloaded successfully")
+    logger.debug("Resolving cached GVM weights for repo=%s", repo_id)
+    weights_dir = snapshot_download(repo_id=repo_id, local_files_only=True)
 
-    logger.info("Loading GVM processor: device=%s", device)
+    logger.info("Loading GVM processor: repo=%s device=%s", repo_id, device)
     processor = GVMProcessor(model_base=str(weights_dir), device=device)
-    _gvm_cache[device] = processor
+    _gvm_cache[key] = processor
     return processor
 
 
-def load_videomama_pipeline(device: str):
-    """Load and cache a VideoMaMa VideoInferencePipeline for `device`, downloading its two
-    checkpoint repos on first use.
+def load_videomama_pipeline(unet_repo_id: str, base_repo_id: str, device: str):
+    """Load and cache a VideoMaMa VideoInferencePipeline for (unet_repo, base_repo, device).
 
-    VideoMaMa's own code has no auto-download, but its checkpoints ARE hosted on
-    HuggingFace (SammyLim/VideoMaMa, stabilityai/stable-video-diffusion-img2vid-xt) --
-    we fetch them ourselves the same way we do for GVM.
+    Both checkpoints are resolved from the standard HF hub cache -- the VideoMaMa
+    HuggingFaceRepoParameter dropdowns gate node execution until the user has
+    downloaded both models via Model Manager, so by the time this runs both repos
+    are already cached and `local_files_only=True` never touches the network.
     """
-    import VideoMaMaInferenceModule
     from huggingface_hub import snapshot_download
     from VideoMaMaInferenceModule.inference import load_videomama_model
 
-    if device in _videomama_cache:
-        return _videomama_cache[device]
+    key = (unet_repo_id, base_repo_id, device)
+    if key in _videomama_cache:
+        return _videomama_cache[key]
 
-    if VideoMaMaInferenceModule.__file__ is None:
-        raise RuntimeError("VideoMaMaInferenceModule has no __file__ (unexpected import mechanism)")
-    checkpoints_dir = Path(VideoMaMaInferenceModule.__file__).parent / "checkpoints"
-    unet_dir = checkpoints_dir / "VideoMaMa"
-    base_dir = checkpoints_dir / "stable-video-diffusion-img2vid-xt"
+    logger.debug("Resolving cached VideoMaMa UNet weights for repo=%s", unet_repo_id)
+    unet_dir = snapshot_download(repo_id=unet_repo_id, local_files_only=True)
 
-    if not (unet_dir / "unet").is_dir():
-        logger.info("Downloading VideoMaMa UNet weights from %s to %s...", VIDEOMAMA_UNET_REPO_ID, unet_dir)
-        snapshot_download(repo_id=VIDEOMAMA_UNET_REPO_ID, local_dir=str(unet_dir))
-        logger.info("VideoMaMa UNet weights downloaded successfully")
-
-    required_base_subdirs = ("feature_extractor", "image_encoder", "vae")
-    if not all((base_dir / subdir).is_dir() for subdir in required_base_subdirs):
-        logger.info(
-            "Downloading Stable Video Diffusion base weights from %s to %s...", VIDEOMAMA_BASE_REPO_ID, base_dir
-        )
-        snapshot_download(
-            repo_id=VIDEOMAMA_BASE_REPO_ID,
-            local_dir=str(base_dir),
-            allow_patterns=["feature_extractor/*", "image_encoder/*", "vae/*", "model_index.json"],
-        )
-        logger.info("Stable Video Diffusion base weights downloaded successfully")
+    logger.debug("Resolving cached Stable Video Diffusion base weights for repo=%s", base_repo_id)
+    base_dir = snapshot_download(repo_id=base_repo_id, local_files_only=True)
 
     logger.info("Loading VideoMaMa pipeline: device=%s", device)
     pipeline = load_videomama_model(base_model_path=str(base_dir), unet_checkpoint_path=str(unet_dir), device=device)
-    _videomama_cache[device] = pipeline
+    _videomama_cache[key] = pipeline
     return pipeline
 
 

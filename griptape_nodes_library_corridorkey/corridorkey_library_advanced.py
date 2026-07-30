@@ -22,6 +22,13 @@ class CorridorKeyLibraryAdvanced(AdvancedNodeLibrary):
         # mutations do not persist across engine restarts, and adding the same
         # path twice is a harmless no-op via the membership check below.
         self._install_syspath(submodule_path)
+        # The engine loads each node .py file as a standalone dynamic module by
+        # file path, not as part of an installed `griptape_nodes_library_corridorkey`
+        # package, so `from griptape_nodes_library_corridorkey import corridorkey_common`
+        # would fail to resolve the package. Add the repo root (this library's parent
+        # directory, which contains the `griptape_nodes_library_corridorkey/` package
+        # with its own __init__.py) to sys.path so that import works as written.
+        self._install_own_syspath()
 
     def after_library_nodes_loaded(self, library_data: LibrarySchema, library: Library) -> None:
         logger.info(f"Finished loading '{library_data.name}' library")
@@ -141,3 +148,19 @@ class CorridorKeyLibraryAdvanced(AdvancedNodeLibrary):
         if str(submodule_path) not in sys.path:
             sys.path.insert(0, str(submodule_path))
             logger.info(f"Added {submodule_path} to sys.path for BiRefNetModule")
+
+    def _install_own_syspath(self) -> None:
+        """Add the repo root to sys.path so `griptape_nodes_library_corridorkey` is importable.
+
+        Node files are loaded by the engine as standalone dynamic modules by file
+        path, not via a real installed `griptape_nodes_library_corridorkey` package,
+        so `from griptape_nodes_library_corridorkey import corridorkey_common` would
+        otherwise fail to resolve the package. Path-injecting the repo root (which
+        contains the `griptape_nodes_library_corridorkey/` package, with its own
+        __init__.py) makes that import resolve as written, keeping the shared helper
+        module properly namespaced instead of a bare top-level name.
+        """
+        repo_root = str(self._get_library_root().parent)
+        if repo_root not in sys.path:
+            sys.path.insert(0, repo_root)
+            logger.info(f"Added {repo_root} to sys.path for griptape_nodes_library_corridorkey")

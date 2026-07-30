@@ -2,7 +2,6 @@ import logging
 import tempfile
 from pathlib import Path
 
-import cv2
 import numpy as np
 import torch
 from griptape_nodes.exe_types.core_types import Parameter, ParameterMode
@@ -84,6 +83,29 @@ class CorridorKeyVideoInference(SuccessFailureNode):
             parameter_name="birefnet_model",
         )
         self._birefnet_param.add_input_parameters()
+
+        # GVM checkpoint (HuggingFace). Only used when hint_source == "gvm".
+        self._gvm_param = HuggingFaceRepoParameter(
+            self,
+            repo_ids=[ck.GVM_MODEL_REPO_ID],
+            parameter_name="gvm_model",
+        )
+        self._gvm_param.add_input_parameters()
+
+        # VideoMaMa checkpoints (HuggingFace). Only used when hint_source == "videomama".
+        self._videomama_unet_param = HuggingFaceRepoParameter(
+            self,
+            repo_ids=[ck.VIDEOMAMA_UNET_REPO_ID],
+            parameter_name="videomama_unet_model",
+        )
+        self._videomama_unet_param.add_input_parameters()
+
+        self._videomama_base_param = HuggingFaceRepoParameter(
+            self,
+            repo_ids=[ck.VIDEOMAMA_BASE_REPO_ID],
+            parameter_name="videomama_base_model",
+        )
+        self._videomama_base_param.add_input_parameters()
 
         self.add_parameter(
             Parameter(
@@ -358,8 +380,19 @@ class CorridorKeyVideoInference(SuccessFailureNode):
             birefnet_errors = self._birefnet_param.validate_before_node_run()
             if birefnet_errors:
                 errors.extend(birefnet_errors)
-        elif hint_source == "videomama" and not self.parameter_values.get("mask_hint"):
-            errors.append(ValueError("mask_hint is required when hint_source is 'videomama'"))
+        elif hint_source == "gvm":
+            gvm_errors = self._gvm_param.validate_before_node_run()
+            if gvm_errors:
+                errors.extend(gvm_errors)
+        elif hint_source == "videomama":
+            if not self.parameter_values.get("mask_hint"):
+                errors.append(ValueError("mask_hint is required when hint_source is 'videomama'"))
+            unet_errors = self._videomama_unet_param.validate_before_node_run()
+            if unet_errors:
+                errors.extend(unet_errors)
+            base_errors = self._videomama_base_param.validate_before_node_run()
+            if base_errors:
+                errors.extend(base_errors)
 
         if not self.parameter_values.get("video"):
             errors.append(ValueError("video is required"))
@@ -382,7 +415,8 @@ class CorridorKeyVideoInference(SuccessFailureNode):
     def _load_alpha_hint_frames_gvm(self, frame_paths: list[Path], tmp_path: Path) -> list[np.ndarray]:
         """Precompute the whole clip's alpha hints with GVM (needs full-clip context for temporal consistency)."""
         device = ck.get_device()
-        processor = ck.load_gvm_processor(device)
+        gvm_repo_id, _ = self._gvm_param.get_repo_revision()
+        processor = ck.load_gvm_processor(gvm_repo_id, device)
 
         gvm_num_frames_per_batch = int(self.parameter_values.get("gvm_num_frames_per_batch") or 8)
         gvm_num_overlap_frames = int(self.parameter_values.get("gvm_num_overlap_frames") or 1)
@@ -433,7 +467,14 @@ class CorridorKeyVideoInference(SuccessFailureNode):
 
         chunk_size = int(self.parameter_values.get("videomama_chunk_size") or 24)
         device = ck.get_device()
-        pipeline = ck.load_videomama_pipeline(device)
+        unet_repo_id, _ = self._videomama_unet_param.get_repo_revision()
+        base_repo_id, _ = self._videomama_base_param.get_repo_revision()
+        pipeline = ck.load_videomama_pipeline(unet_repo_id, base_repo_id, device)
+
+        # Deferred: corridorkey_common (imported at module load, above) sets
+        # OPENCV_IO_ENABLE_OPENEXR before cv2 is ever imported, which only works
+        # if cv2 isn't already imported at module level -- see corridorkey_common.py.
+        import cv2
 
         input_frames = [np.clip(ck.read_frame_rgb(p) * 255.0, 0, 255).astype(np.uint8) for p in frame_paths]
         mask_frames = []
