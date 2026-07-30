@@ -10,6 +10,7 @@ import logging
 import os
 import uuid
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -70,10 +71,10 @@ VIDEOMAMA_BASE_REPO_ID = "stabilityai/stable-video-diffusion-img2vid-xt"
 # Module-level caches, shared by both the image and video inference nodes, so
 # switching between them doesn't force a reload/re-download or re-trigger
 # torch.compile autotuning. Keyed the same way the per-class caches used to be.
-_engine_cache: dict[tuple[str, str, int], object] = {}
-_birefnet_cache: dict[tuple[str, str], object] = {}
-_gvm_cache: dict[str, object] = {}
-_videomama_cache: dict[str, object] = {}
+_engine_cache: dict[tuple[str, str, int], Any] = {}
+_birefnet_cache: dict[tuple[str, str], Any] = {}
+_gvm_cache: dict[str, Any] = {}
+_videomama_cache: dict[str, Any] = {}
 
 
 def get_device() -> str:
@@ -267,6 +268,8 @@ def load_gvm_processor(device: str):
     if device in _gvm_cache:
         return _gvm_cache[device]
 
+    if gvm_core.__file__ is None:
+        raise RuntimeError("gvm_core module has no __file__ (unexpected import mechanism)")
     weights_dir = Path(gvm_core.__file__).parent / "weights"
     required_subdirs = ("vae", "scheduler", "unet")
     if not all((weights_dir / subdir).is_dir() for subdir in required_subdirs):
@@ -275,7 +278,7 @@ def load_gvm_processor(device: str):
             GVM_MODEL_REPO_ID,
             weights_dir,
         )
-        snapshot_download(repo_id=GVM_MODEL_REPO_ID, local_dir=str(weights_dir), local_dir_use_symlinks=False)
+        snapshot_download(repo_id=GVM_MODEL_REPO_ID, local_dir=str(weights_dir))
         logger.info("GVM weights downloaded successfully")
 
     logger.info("Loading GVM processor: device=%s", device)
@@ -299,13 +302,15 @@ def load_videomama_pipeline(device: str):
     if device in _videomama_cache:
         return _videomama_cache[device]
 
+    if VideoMaMaInferenceModule.__file__ is None:
+        raise RuntimeError("VideoMaMaInferenceModule has no __file__ (unexpected import mechanism)")
     checkpoints_dir = Path(VideoMaMaInferenceModule.__file__).parent / "checkpoints"
     unet_dir = checkpoints_dir / "VideoMaMa"
     base_dir = checkpoints_dir / "stable-video-diffusion-img2vid-xt"
 
     if not (unet_dir / "unet").is_dir():
         logger.info("Downloading VideoMaMa UNet weights from %s to %s...", VIDEOMAMA_UNET_REPO_ID, unet_dir)
-        snapshot_download(repo_id=VIDEOMAMA_UNET_REPO_ID, local_dir=str(unet_dir), local_dir_use_symlinks=False)
+        snapshot_download(repo_id=VIDEOMAMA_UNET_REPO_ID, local_dir=str(unet_dir))
         logger.info("VideoMaMa UNet weights downloaded successfully")
 
     required_base_subdirs = ("feature_extractor", "image_encoder", "vae")
@@ -316,7 +321,6 @@ def load_videomama_pipeline(device: str):
         snapshot_download(
             repo_id=VIDEOMAMA_BASE_REPO_ID,
             local_dir=str(base_dir),
-            local_dir_use_symlinks=False,
             allow_patterns=["feature_extractor/*", "image_encoder/*", "vae/*", "model_index.json"],
         )
         logger.info("Stable Video Diffusion base weights downloaded successfully")
@@ -333,7 +337,14 @@ def resolve_frame_paths(value) -> list[Path]:
         return [Path(entry.path) for entry in value.entries]
 
     if isinstance(value, list):
-        paths = [Path(item.value if isinstance(item, (ImageArtifact, ImageUrlArtifact)) else item) for item in value]
+        paths: list[Path] = []
+        for item in value:
+            if isinstance(item, ImageUrlArtifact):
+                paths.append(Path(item.value))
+            elif isinstance(item, ImageArtifact):
+                raise ValueError("ImageArtifact (raw bytes) cannot be resolved to a frame file path; use ImageUrlArtifact")
+            else:
+                paths.append(Path(item))
         return sorted(paths, key=lambda p: p.name)
 
     if isinstance(value, str):

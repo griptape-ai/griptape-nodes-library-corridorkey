@@ -543,10 +543,12 @@ class CorridorKeyVideoInference(SuccessFailureNode):
                     for idx in range(batch_start, batch_end):
                         frame_rgb = ck.read_frame_rgb(frame_paths[idx])
                         if hint_source == "gvm":
+                            assert gvm_hint_frames is not None
                             hint = ck.resize_alpha_to_shape(
                                 gvm_hint_frames[idx], frame_rgb.shape[0], frame_rgb.shape[1]
                             )
                         elif hint_source == "videomama":
+                            assert videomama_hint_frames is not None
                             hint = ck.resize_alpha_to_shape(
                                 videomama_hint_frames[idx], frame_rgb.shape[0], frame_rgb.shape[1]
                             )
@@ -581,6 +583,7 @@ class CorridorKeyVideoInference(SuccessFailureNode):
                     comp_stack = np.stack([r["comp"] for r in result], axis=0) if generate_comp else None
 
                     if output_format == "video":
+                        assert video_writers is not None
                         video_writers["alpha"].write(torch.from_numpy(alpha_stack).unsqueeze(1).float())
                         video_writers["foreground"].write(torch.from_numpy(fg_stack).permute(0, 3, 1, 2).float())
                         if comp_stack is not None:
