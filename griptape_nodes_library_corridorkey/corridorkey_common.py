@@ -95,7 +95,7 @@ def artifact_to_bytes(artifact: ImageArtifact | ImageUrlArtifact) -> bytes:
 
 def decode_rgb_image(image_bytes: bytes) -> np.ndarray:
     """Decode image bytes into a float32 [H, W, 3] sRGB array in [0, 1]."""
-    pil = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    pil = Image.open(io.BytesIO(image_bytes))
     return pil_to_rgb_array(pil)
 
 

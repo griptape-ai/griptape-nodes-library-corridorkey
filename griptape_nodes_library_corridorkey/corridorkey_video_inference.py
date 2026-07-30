@@ -517,6 +517,14 @@ class CorridorKeyVideoInference(SuccessFailureNode):
 
         device = ck.get_device()
         logger.info("CorridorKey video inference: device=%s hint_source=%s", device, hint_source)
+        if hint_source in ("gvm", "videomama") and device != "cuda":
+            logger.warning(
+                "hint_source=%s is only tested on CUDA GPUs with ~80GB VRAM; device=%s may fail deep "
+                "inside vendored GVM/VideoMaMa code with a cryptic error, or may simply be too slow/memory-"
+                "constrained to complete.",
+                hint_source,
+                device,
+            )
 
         model_repo_id, _ = self._model_param.get_repo_revision()
         screen_color = ck.SCREEN_COLOR_BY_REPO[model_repo_id]
@@ -621,7 +629,19 @@ class CorridorKeyVideoInference(SuccessFailureNode):
                         [r["alpha"][..., 0] if r["alpha"].ndim == 3 else r["alpha"] for r in result], axis=0
                     )
                     fg_stack = np.stack([r["fg"] for r in result], axis=0)
-                    comp_stack = np.stack([r["comp"] for r in result], axis=0) if generate_comp else None
+
+                    comp_stack = None
+                    if generate_comp:
+                        # Unlike the image node (which can silently fall back to a None composite
+                        # output for a single frame), silently dropping a missing "comp" here would
+                        # desync the composite output's frame count from alpha/foreground mid-video.
+                        # Fail loudly instead of writing a corrupted/partial composite stream.
+                        if any("comp" not in r or r["comp"] is None for r in result):
+                            raise RuntimeError(
+                                "generate_comp is True but the CorridorKey engine did not return a "
+                                "'comp' frame for every frame in this batch."
+                            )
+                        comp_stack = np.stack([r["comp"] for r in result], axis=0)
 
                     if output_format == "video":
                         assert video_writers is not None
