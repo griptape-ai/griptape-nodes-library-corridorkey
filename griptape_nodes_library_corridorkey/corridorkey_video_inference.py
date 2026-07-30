@@ -17,6 +17,33 @@ logger = logging.getLogger("corridorkey_library")
 
 _SEQUENCE_INPUT_TYPES = ["VideoUrlArtifact", "Sequence", "list", "str"]
 
+# Parameters only relevant for a given hint_source. Each HuggingFaceRepoParameter
+# contributes both its dropdown and a "..._download" button parameter.
+_HINT_SOURCE_PARAMETERS = {
+    "birefnet": ["birefnet_model", "birefnet_model_download"],
+    "gvm": [
+        "gvm_model",
+        "gvm_model_download",
+        "gvm_num_frames_per_batch",
+        "gvm_num_overlap_frames",
+        "gvm_denoise_steps",
+    ],
+    "videomama": [
+        "mask_hint",
+        "videomama_unet_model",
+        "videomama_unet_model_download",
+        "videomama_base_model",
+        "videomama_base_model_download",
+        "videomama_chunk_size",
+    ],
+}
+
+# Output parameters only relevant for a given output_format.
+_OUTPUT_FORMAT_PARAMETERS = {
+    "video": ["alpha", "foreground", "composite"],
+    "exr_sequence": ["alpha_sequence", "foreground_sequence", "composite_sequence"],
+}
+
 
 class CorridorKeyVideoInference(SuccessFailureNode):
     """Run the CorridorKey neural keying pipeline across every frame of a video or image sequence.
@@ -367,6 +394,32 @@ class CorridorKeyVideoInference(SuccessFailureNode):
         )
 
         self._create_status_parameters()
+
+        # after_value_set() is skipped for values set during construction (including
+        # defaults), so the initial visibility state has to be applied explicitly here.
+        self._update_hint_source_visibility("birefnet")
+        self._update_output_format_visibility("video")
+
+    def after_value_set(self, parameter: Parameter, value) -> None:
+        super().after_value_set(parameter, value)
+        if parameter.name == "hint_source":
+            self._update_hint_source_visibility(value)
+        elif parameter.name == "output_format":
+            self._update_output_format_visibility(value)
+
+    def _update_hint_source_visibility(self, hint_source: str) -> None:
+        for source, names in _HINT_SOURCE_PARAMETERS.items():
+            if source == hint_source:
+                self.show_parameter_by_name(names)
+            else:
+                self.hide_parameter_by_name(names)
+
+    def _update_output_format_visibility(self, output_format: str) -> None:
+        for fmt, names in _OUTPUT_FORMAT_PARAMETERS.items():
+            if fmt == output_format:
+                self.show_parameter_by_name(names)
+            else:
+                self.hide_parameter_by_name(names)
 
     def validate_before_node_run(self) -> list[Exception] | None:
         errors: list[Exception] = []
