@@ -342,7 +342,9 @@ def resolve_frame_paths(value) -> list[Path]:
             if isinstance(item, ImageUrlArtifact):
                 paths.append(Path(item.value))
             elif isinstance(item, ImageArtifact):
-                raise ValueError("ImageArtifact (raw bytes) cannot be resolved to a frame file path; use ImageUrlArtifact")
+                raise ValueError(
+                    "ImageArtifact (raw bytes) cannot be resolved to a frame file path; use ImageUrlArtifact"
+                )
             else:
                 paths.append(Path(item))
         return sorted(paths, key=lambda p: p.name)
