@@ -430,9 +430,7 @@ def write_frame_rgb(path: Path, rgb: np.ndarray) -> None:
     if path.suffix.lower() == ".exr":
         from griptape_nodes_openexr.exr.exr_io import write_exr_channels
 
-        write_exr_channels(
-            str(path), {"R": rgb[..., 0], "G": rgb[..., 1], "B": rgb[..., 2]}, pixel_type="float"
-        )
+        write_exr_channels(str(path), {"R": rgb[..., 0], "G": rgb[..., 1], "B": rgb[..., 2]}, pixel_type="float")
     else:
         path.write_bytes(encode_rgb_png(rgb))
 

@@ -600,7 +600,9 @@ class CorridorKeyVideoInference(SuccessFailureNode):
                                 ck.write_frame_rgb(comp_path, comp_stack[offset])
                                 sequence_frame_paths["composite"].append(comp_path)
 
-                    logger.info("CorridorKey video inference: processed frames %d-%d/%d", batch_start, batch_end, frame_count)
+                    logger.info(
+                        "CorridorKey video inference: processed frames %d-%d/%d", batch_start, batch_end, frame_count
+                    )
             finally:
                 if video_writers is not None:
                     for writer in video_writers.values():
