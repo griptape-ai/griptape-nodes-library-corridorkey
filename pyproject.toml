@@ -1,14 +1,14 @@
 [project]
 name = "griptape-nodes-library-corridorkey"
-version = "0.1.0"
+version = "0.2.0"
 description = "Griptape Nodes library wrapping the CorridorKey neural green/blue screen keying model."
 authors = [{ name = "Griptape, Inc.", email = "hello@griptape.ai" }]
 readme = "README.md"
 requires-python = "~=3.12.0"
-dependencies = ["griptape-nodes"]
+dependencies = ["griptape-nodes-engine"]
 
 [tool.uv.sources]
-griptape-nodes = { git = "https://github.com/griptape-ai/griptape-nodes", rev = "latest" }
+griptape-nodes-engine = { git = "https://github.com/griptape-ai/griptape-nodes-engine", rev = "stable" }
 
 [build-system]
 requires = ["hatchling"]
