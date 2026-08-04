@@ -206,7 +206,7 @@ def _patch_timm_hiera_view_bug() -> None:
         return self.proj(x)
 
     hiera.MaskUnitAttention.forward = patched_forward
-    hiera.MaskUnitAttention._corridorkey_reshape_patched = True
+    setattr(hiera.MaskUnitAttention, "_corridorkey_reshape_patched", True)  # noqa: B010
 
 
 def _patch_connected_components_mps_race() -> None:

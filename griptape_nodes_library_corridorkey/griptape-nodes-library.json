@@ -1,97 +1,101 @@
 {
-  "name": "Griptape Nodes CorridorKey Library",
-  "library_schema_version": "0.5.0",
-  "advanced_library_path": "corridorkey_library_advanced.py",
-  "metadata": {
-    "author": "Griptape, Inc.",
-    "description": "Neural-network-based green/blue screen keying tool by Niko Pueringer / Corridor Digital. Takes an RGB frame plus a coarse alpha hint and outputs a clean straight alpha matte, a despilled foreground, and an optional checkerboard composite preview. Distributed as green-screen and blue-screen GreenFormer (Hiera + refiner) checkpoints with auto-download from HuggingFace.",
-    "library_version": "0.2.0",
-    "engine_version": "0.89.0",
-    "tags": [
-      "Griptape",
-      "AI",
-      "Image",
-      "VFX",
-      "Keying",
-      "Matting",
-      "GreenScreen"
-    ],
-    "dependencies": {
-      "pip_dependencies": [
-        "torch==2.8.0",
-        "torchvision==0.23.0",
-        "timm==1.0.24",
-        "safetensors",
-        "numpy",
-        "opencv-python",
-        "tqdm",
-        "huggingface-hub",
-        "transformers",
-        "diffusers",
-        "accelerate",
-        "peft",
-        "Pillow",
-        "einops",
-        "kornia",
-        "PIMS",
-        "easydict",
-        "imageio",
-        "matplotlib",
-        "av",
-        "git+https://github.com/griptape-ai/griptape-nodes-library-openexr"
-      ],
-      "pip_install_flags": [
-        "--preview",
-        "--torch-backend=auto"
-      ]
-    },
-    "resources": {
-      "required": {
-        "compute": [
-          [
-            "cuda",
-            "mps"
-          ],
-          "has_any"
+    "name": "Griptape Nodes CorridorKey Library",
+    "library_schema_version": "0.5.0",
+    "advanced_library_path": "corridorkey_library_advanced.py",
+    "metadata": {
+        "author": "Griptape, Inc.",
+        "description": "Neural-network-based green/blue screen keying tool by Niko Pueringer / Corridor Digital. Takes an RGB frame plus a coarse alpha hint and outputs a clean straight alpha matte, a despilled foreground, and an optional checkerboard composite preview. Distributed as green-screen and blue-screen GreenFormer (Hiera + refiner) checkpoints with auto-download from HuggingFace.",
+        "library_version": "0.2.0",
+        "engine_version": "0.89.0",
+        "tags": [
+            "Griptape",
+            "AI",
+            "Image",
+            "VFX",
+            "Keying",
+            "Matting",
+            "GreenScreen"
+        ],
+        "dependencies": {
+            "pip_dependencies": [
+                "torch>=2.13.0",
+                "torchvision>=0.28.0",
+                "timm==1.0.24",
+                "safetensors",
+                "numpy",
+                "opencv-python>=5.0.0.93",
+                "tqdm",
+                "huggingface-hub",
+                "transformers",
+                "diffusers",
+                "accelerate",
+                "peft",
+                "Pillow",
+                "einops",
+                "kornia",
+                "PIMS",
+                "easydict",
+                "imageio",
+                "matplotlib",
+                "av"
+            ],
+            "pip_install_flags": [
+                "--preview",
+                "--torch-backend=auto"
+            ]
+        },
+        "resources": {
+            "required": {
+                "compute": [
+                    [
+                        "cuda",
+                        "mps"
+                    ],
+                    "has_any"
+                ]
+            }
+        },
+        "declarations": [
+            {
+                "type": "library_dependency",
+                "url": "https://github.com/griptape-ai/griptape-nodes-library-openexr.git",
+                "required": false
+            },
+            {
+                "type": "library_dependency",
+                "url": "https://github.com/griptape-ai/griptape-nodes-library-opencolorio.git",
+                "required": false
+            }
         ]
-      }
     },
-    "declarations": [
-      {
-        "type": "library_dependency",
-        "url": "https://github.com/griptape-ai/griptape-nodes-library-opencolorio.git",
-        "required": false
-      }
+    "categories": [
+        {
+            "corridorkey": {
+                "color": "border-green-500",
+                "title": "CorridorKey",
+                "description": "Neural network green/blue screen keying and alpha-hint generation",
+                "icon": "Scissors"
+            }
+        }
+    ],
+    "nodes": [
+        {
+            "class_name": "CorridorKeyInference",
+            "file_path": "corridorkey_inference.py",
+            "metadata": {
+                "category": "corridorkey",
+                "description": "Runs the full CorridorKey neural keying pipeline on a single image frame. Takes an RGB image and an optional coarse alpha-hint mask; if no hint is supplied, BiRefNet is used internally to generate one. Produces a clean straight alpha matte, a despilled sRGB foreground, a straight sRGB RGBA image colour-matched to the foreground, and an optional composite-on-checkerboard preview. Supports both green-screen and blue-screen checkpoints with auto-download from HuggingFace.",
+                "display_name": "CorridorKey Inference"
+            }
+        },
+        {
+            "class_name": "CorridorKeyVideoInference",
+            "file_path": "corridorkey_video_inference.py",
+            "metadata": {
+                "category": "corridorkey",
+                "description": "Runs the CorridorKey neural keying pipeline across every frame of a video clip or image sequence. Generates per-frame alpha hints via BiRefNet (default, works on any GPU), GVM (temporally-consistent hints, requires ~80GB VRAM on a single GPU and a large one-time HuggingFace download), or VideoMaMa (temporally-consistent hints guided by a user-supplied rough per-frame mask, also a large one-time download). Despills/refines each frame and writes alpha, foreground, and composite as either mp4 videos or an EXR image sequence.",
+                "display_name": "CorridorKey Video Inference"
+            }
+        }
     ]
-  },
-  "categories": [
-    {
-      "corridorkey": {
-        "color": "border-green-500",
-        "title": "CorridorKey",
-        "description": "Neural network green/blue screen keying and alpha-hint generation",
-        "icon": "Scissors"
-      }
-    }
-  ],
-  "nodes": [
-    {
-      "class_name": "CorridorKeyInference",
-      "file_path": "corridorkey_inference.py",
-      "metadata": {
-        "category": "corridorkey",
-        "description": "Runs the full CorridorKey neural keying pipeline on a single image frame. Takes an RGB image and an optional coarse alpha-hint mask; if no hint is supplied, BiRefNet is used internally to generate one. Produces a clean straight alpha matte, a despilled sRGB foreground, a straight sRGB RGBA image colour-matched to the foreground, and an optional composite-on-checkerboard preview. Supports both green-screen and blue-screen checkpoints with auto-download from HuggingFace.",
-        "display_name": "CorridorKey Inference"
-      }
-    },
-    {
-      "class_name": "CorridorKeyVideoInference",
-      "file_path": "corridorkey_video_inference.py",
-      "metadata": {
-        "category": "corridorkey",
-        "description": "Runs the CorridorKey neural keying pipeline across every frame of a video clip or image sequence. Generates per-frame alpha hints via BiRefNet (default, works on any GPU), GVM (temporally-consistent hints, requires ~80GB VRAM on a single GPU and a large one-time HuggingFace download), or VideoMaMa (temporally-consistent hints guided by a user-supplied rough per-frame mask, also a large one-time download). Despills/refines each frame and writes alpha, foreground, and composite as either mp4 videos or an EXR image sequence.",
-        "display_name": "CorridorKey Video Inference"
-      }
-    }
-  ]
 }
