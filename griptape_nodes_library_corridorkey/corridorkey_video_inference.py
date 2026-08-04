@@ -72,7 +72,9 @@ class CorridorKeyVideoInference(SuccessFailureNode):
                     "`hint_source=birefnet` is the safe default and runs on any GPU. Only switch to `gvm` or "
                     "`videomama` if you need temporally-consistent hints across the clip and have a GPU with "
                     "enough VRAM -- both require a large one-time HuggingFace download. Use `max_frames` to "
-                    "preview settings on a short clip before running the full video."
+                    "preview settings on a short clip before running the full video. Leave `color_mode` as "
+                    "'basic' unless you need an OCIO display-view transform on `foreground`, in which case "
+                    "set it to 'ocio' and connect `color_params`."
                 ),
             )
         )

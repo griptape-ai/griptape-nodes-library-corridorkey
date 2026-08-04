@@ -34,7 +34,9 @@ class CorridorKeyInference(SuccessFailureNode):
                 value=(
                     "Leave `alpha_hint` empty to have BiRefNet generate one automatically -- only supply "
                     "your own hint if you need tighter control over the matte's coarse shape. Use `foreground` "
-                    "for a clean despilled plate, and `rgba` when you need a single drop-in matte image."
+                    "for a clean despilled plate, and `rgba` when you need a single drop-in matte image. Leave "
+                    "`color_mode` as 'basic' unless you need an OCIO display-view transform on `rgba`, in "
+                    "which case set it to 'ocio' and connect `color_params`."
                 ),
             )
         )
