@@ -142,7 +142,7 @@ def encode_rgb_png(rgb: np.ndarray) -> bytes:
 
 
 def encode_rgba_png(rgba: np.ndarray) -> bytes:
-    """Encode a float32 [H, W, 4] linear premultiplied RGBA image as 8-bit PNG."""
+    """Encode a float32 [H, W, 4] straight sRGB RGBA image as 8-bit PNG."""
     arr = np.clip(rgba * 255.0, 0, 255).astype(np.uint8)
     pil = Image.fromarray(arr, mode="RGBA")
     buf = io.BytesIO()

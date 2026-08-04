@@ -55,7 +55,14 @@
           "has_any"
         ]
       }
-    }
+    },
+    "declarations": [
+      {
+        "type": "library_dependency",
+        "url": "https://github.com/griptape-ai/griptape-nodes-library-opencolorio.git",
+        "required": false
+      }
+    ]
   },
   "categories": [
     {
@@ -73,7 +80,7 @@
       "file_path": "corridorkey_inference.py",
       "metadata": {
         "category": "corridorkey",
-        "description": "Runs the full CorridorKey neural keying pipeline on a single image frame. Takes an RGB image and an optional coarse alpha-hint mask; if no hint is supplied, BiRefNet is used internally to generate one. Produces a clean straight alpha matte, a despilled sRGB foreground, a linear premultiplied RGBA composite, and an optional composite-on-checkerboard preview. Supports both green-screen and blue-screen checkpoints with auto-download from HuggingFace.",
+        "description": "Runs the full CorridorKey neural keying pipeline on a single image frame. Takes an RGB image and an optional coarse alpha-hint mask; if no hint is supplied, BiRefNet is used internally to generate one. Produces a clean straight alpha matte, a despilled sRGB foreground, a straight sRGB RGBA image colour-matched to the foreground, and an optional composite-on-checkerboard preview. Supports both green-screen and blue-screen checkpoints with auto-download from HuggingFace.",
         "display_name": "CorridorKey Inference"
       }
     },

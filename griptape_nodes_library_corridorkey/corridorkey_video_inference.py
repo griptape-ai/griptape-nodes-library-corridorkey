@@ -4,13 +4,14 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from griptape_nodes.exe_types.core_types import Parameter, ParameterMode
+from griptape_nodes.exe_types.core_types import Parameter, ParameterMessage, ParameterMode
 from griptape_nodes.exe_types.node_types import AsyncResult, SuccessFailureNode
 from griptape_nodes.exe_types.param_components.huggingface.huggingface_repo_parameter import HuggingFaceRepoParameter
 from griptape_nodes.traits.file_system_picker import FileSystemPicker
 from griptape_nodes.traits.options import Options
 from PIL import Image
 
+from griptape_nodes_library_corridorkey import corridorkey_colorspace as cc
 from griptape_nodes_library_corridorkey import corridorkey_common as ck
 
 logger = logging.getLogger("corridorkey_library")
@@ -61,6 +62,20 @@ class CorridorKeyVideoInference(SuccessFailureNode):
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
+
+        self.add_node_element(
+            ParameterMessage(
+                name="usage_tip",
+                variant="tip",
+                title="Usage Tip",
+                value=(
+                    "`hint_source=birefnet` is the safe default and runs on any GPU. Only switch to `gvm` or "
+                    "`videomama` if you need temporally-consistent hints across the clip and have a GPU with "
+                    "enough VRAM -- both require a large one-time HuggingFace download. Use `max_frames` to "
+                    "preview settings on a short clip before running the full video."
+                ),
+            )
+        )
 
         self.add_parameter(
             Parameter(
@@ -318,6 +333,38 @@ class CorridorKeyVideoInference(SuccessFailureNode):
             )
         )
 
+        default_color_mode = (
+            cc.COLOR_MODE_OCIO if cc.find_colorspace_transform_request_type() is not None else cc.COLOR_MODE_BASIC
+        )
+
+        self.add_parameter(
+            Parameter(
+                name="color_mode",
+                allowed_modes={ParameterMode.INPUT, ParameterMode.PROPERTY},
+                type="str",
+                default_value=default_color_mode,
+                traits={Options(choices=[cc.COLOR_MODE_BASIC, cc.COLOR_MODE_OCIO])},
+                tooltip=(
+                    "Colour management used to convert the `foreground` output's internal linear data "
+                    "to display sRGB. 'basic' uses the local sRGB transfer function (no dependencies). "
+                    "'ocio' uses a connected `color_params` OCIO display-view transform, requiring the "
+                    "OpenColorIO library to be loaded."
+                ),
+            )
+        )
+
+        self.add_parameter(
+            Parameter(
+                name="color_params",
+                allowed_modes={ParameterMode.INPUT},
+                type="OCIOColorParamsArtifact",
+                input_types=["OCIOColorParamsArtifact"],
+                default_value=None,
+                tooltip="OCIO colour parameters (source colorspace, display, view). Required when `color_mode` is 'ocio'.",
+                ui_options={"hide": default_color_mode != cc.COLOR_MODE_OCIO},
+            )
+        )
+
         self.add_parameter(
             Parameter(
                 name="output_format",
@@ -406,6 +453,11 @@ class CorridorKeyVideoInference(SuccessFailureNode):
             self._update_hint_source_visibility(value)
         elif parameter.name == "output_format":
             self._update_output_format_visibility(value)
+        elif parameter.name == "color_mode":
+            if value == cc.COLOR_MODE_OCIO:
+                self.show_parameter_by_name("color_params")
+            else:
+                self.hide_parameter_by_name("color_params")
 
     def _update_hint_source_visibility(self, hint_source: str) -> None:
         for source, names in _HINT_SOURCE_PARAMETERS.items():
@@ -561,6 +613,10 @@ class CorridorKeyVideoInference(SuccessFailureNode):
         despeckle_size: int = int(self.parameter_values.get("despeckle_size") or 400)
         refiner_scale: float = float(self.parameter_values.get("refiner_scale") or 1.0)
         generate_comp: bool = bool(self.parameter_values.get("generate_comp", True))
+        color_mode = str(self.parameter_values.get("color_mode") or cc.COLOR_MODE_BASIC)
+        color_params = self.parameter_values.get("color_params") if color_mode == cc.COLOR_MODE_OCIO else None
+        if color_mode == cc.COLOR_MODE_OCIO and color_params is None:
+            raise ValueError("color_mode is 'ocio' but no color_params input is connected.")
         hint_source: str = self.parameter_values.get("hint_source", "birefnet")
         output_format: str = self.parameter_values.get("output_format", "video")
         output_frame_rate: float = float(self.parameter_values.get("output_frame_rate") or 24.0)
@@ -681,7 +737,11 @@ class CorridorKeyVideoInference(SuccessFailureNode):
                     alpha_stack = np.stack(
                         [r["alpha"][..., 0] if r["alpha"].ndim == 3 else r["alpha"] for r in result], axis=0
                     )
-                    fg_stack = np.stack([r["fg"] for r in result], axis=0)
+                    # Despilled/straight/sRGB, not result["fg"] (the model's raw undespilled
+                    # prediction) -- matches CorridorKeyInference's foreground/rgba convergence
+                    # fix and the tooltip's "despilled" claim (see GitHub issue #2).
+                    processed_stack = np.stack([r["processed"] for r in result], axis=0)
+                    fg_stack, _ = cc.build_foreground_and_rgba(processed_stack, color_params)
 
                     comp_stack = None
                     if generate_comp:
