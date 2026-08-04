@@ -118,8 +118,9 @@ class CorridorKeyInference(SuccessFailureNode):
                 type="bool",
                 default_value=True,
                 tooltip=(
-                    "If True, the foreground output is straight (unpremultiplied). "
-                    "If False, treated as premultiplied. Leave True for the published checkpoints."
+                    "If True, `foreground` is straight (unpremultiplied). If False, `foreground` is "
+                    "alpha-premultiplied. Leave True for the published checkpoints. Does not affect "
+                    "`composite`, which is always correctly composited regardless of this setting."
                 ),
             )
         )
@@ -218,7 +219,10 @@ class CorridorKeyInference(SuccessFailureNode):
                 allowed_modes={ParameterMode.OUTPUT},
                 output_type="ImageUrlArtifact",
                 default_value=None,
-                tooltip="Single-channel straight alpha matte (float 0-1) encoded as a grayscale PNG.",
+                tooltip=(
+                    "Single-channel straight alpha matte (float 0-1), including `auto_despeckle` cleanup "
+                    "when enabled, encoded as a grayscale PNG."
+                ),
             )
         )
 
@@ -345,7 +349,11 @@ class CorridorKeyInference(SuccessFailureNode):
             alpha_hint_np,
             refiner_scale=refiner_scale,
             input_is_linear=input_is_linear,
-            fg_is_straight=fg_is_straight,
+            # CorridorKeyModule's fg buffer is always straight in practice regardless of this
+            # flag (its own comment: "though our pipeline forces straight") -- pass True
+            # unconditionally so `comp`'s compositing formula is always the correct one. Our
+            # own `fg_is_straight` parameter is instead applied to `foreground` below.
+            fg_is_straight=True,
             despill_strength=despill_strength,
             auto_despeckle=auto_despeckle,
             despeckle_size=despeckle_size,
@@ -358,14 +366,17 @@ class CorridorKeyInference(SuccessFailureNode):
         if isinstance(result, list):
             result = result[0]
 
-        alpha_out = result["alpha"]
         rgba_out = result["processed"]
+        # rgba_out's alpha channel is the despeckled matte (when auto_despeckle is True) --
+        # result["alpha"] is the pre-despeckle raw prediction and was previously used here,
+        # meaning auto_despeckle/despeckle_size had no effect on this output at all.
+        alpha_out = rgba_out[..., 3:4]
 
         color_mode = str(self.parameter_values.get("color_mode") or cc.COLOR_MODE_BASIC)
         color_params = self.parameter_values.get("color_params") if color_mode == cc.COLOR_MODE_OCIO else None
         if color_mode == cc.COLOR_MODE_OCIO and color_params is None:
             raise ValueError("color_mode is 'ocio' but no color_params input is connected.")
-        foreground_srgb, rgba_srgb = cc.build_foreground_and_rgba(rgba_out, color_params)
+        foreground_srgb, rgba_srgb = cc.build_foreground_and_rgba(rgba_out, color_params, fg_is_straight)
 
         self.parameter_output_values["alpha"] = ck.save_image_artifact(ck.encode_grayscale_png(alpha_out), "alpha")
         self.parameter_output_values["foreground"] = ck.save_image_artifact(

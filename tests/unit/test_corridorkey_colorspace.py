@@ -155,6 +155,21 @@ class TestApplyOcioOrLocalSrgb:
         ):
             ck.apply_ocio_or_local_srgb(linear, FakeColorParams())
 
+    def test_blank_display_or_view_falls_back_to_local_instead_of_ocio_passthrough(self) -> None:
+        """ColorspaceTransformRequest's handler silently passes pixels through unchanged
+        when display/view are blank (e.g. an unconfigured OCIO Color Parameters node).
+        Returning that passthrough as if it were sRGB would reproduce issue #2's exact
+        symptom (rgba looking linear) -- we must fall back to the local transform instead."""
+        linear = np.array([[[0.05, 0.05, 0.05]]], dtype=np.float32)
+        req_type = MagicMock()
+
+        with patch.object(ck, "find_colorspace_transform_request_type", return_value=req_type):
+            srgb, label = ck.apply_ocio_or_local_srgb(linear, FakeColorParams(display="", view="ACES"))
+
+        req_type.assert_not_called()
+        np.testing.assert_allclose(srgb, ck.linear_to_srgb(linear))
+        assert label == ck.COLOR_MODE_BASIC
+
 
 class TestBuildStraightSrgbRgba:
     def test_matches_foreground_at_full_opacity(self) -> None:
@@ -198,3 +213,36 @@ class TestBuildForegroundAndRgba:
 
         np.testing.assert_array_equal(foreground_srgb, rgba_srgb[..., :3])
         np.testing.assert_allclose(foreground_srgb, fg_srgb, atol=1e-4)
+
+    def test_fg_is_straight_false_premultiplies_foreground_but_not_rgba(self) -> None:
+        """fg_is_straight=False should make `foreground` alpha-premultiplied while `rgba`
+        stays straight (8-bit PNG has no premultiplied-alpha convention)."""
+        fg_srgb = np.full((2, 2, 3), 0.6, dtype=np.float32)
+        alpha = np.full((2, 2, 1), 0.4, dtype=np.float32)
+        fg_linear = _srgb_to_linear_ref(fg_srgb)
+        premultiplied_rgba = np.concatenate([fg_linear * alpha, alpha], axis=-1)
+
+        foreground_srgb, rgba_srgb = ck.build_foreground_and_rgba(
+            premultiplied_rgba, color_params=None, fg_is_straight=False
+        )
+
+        # rgba's RGB is unaffected by fg_is_straight -- still the straight sRGB foreground.
+        np.testing.assert_allclose(rgba_srgb[..., :3], fg_srgb, atol=1e-4)
+        # foreground is now the gamma-encoded premultiplied colour, not straight, and
+        # therefore darker than (and different from) rgba's RGB channels.
+        expected_premultiplied_srgb = ck.linear_to_srgb(fg_linear * alpha)
+        np.testing.assert_allclose(foreground_srgb, expected_premultiplied_srgb, atol=1e-5)
+        assert not np.allclose(foreground_srgb, rgba_srgb[..., :3])
+
+    def test_fg_is_straight_true_is_default_and_matches_previous_behavior(self) -> None:
+        fg_srgb = np.full((2, 2, 3), 0.6, dtype=np.float32)
+        alpha = np.full((2, 2, 1), 0.4, dtype=np.float32)
+        premultiplied_rgba = np.concatenate([_srgb_to_linear_ref(fg_srgb) * alpha, alpha], axis=-1)
+
+        default_fg, default_rgba = ck.build_foreground_and_rgba(premultiplied_rgba, color_params=None)
+        explicit_fg, explicit_rgba = ck.build_foreground_and_rgba(
+            premultiplied_rgba, color_params=None, fg_is_straight=True
+        )
+
+        np.testing.assert_array_equal(default_fg, explicit_fg)
+        np.testing.assert_array_equal(default_rgba, explicit_rgba)

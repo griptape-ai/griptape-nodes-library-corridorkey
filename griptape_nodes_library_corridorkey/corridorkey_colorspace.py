@@ -77,6 +77,17 @@ def apply_ocio_or_local_srgb(rgb: np.ndarray, color_params: Any | None) -> tuple
         msg = f"color_params is missing a required attribute (source_colorspace, display, view, config_path): {e}"
         raise ValueError(msg) from e
 
+    if not display or not view:
+        # ColorspaceTransformRequest's own handler silently passes pixels through
+        # UNCHANGED when display/view are blank (e.g. an "OCIO Color Parameters" node
+        # with no config connected yet -- griptape-nodes-library-opencolorio documents
+        # this as intentional scaffolding behaviour). For us that would mean returning
+        # still-linear data labeled as sRGB -- the exact "rgba looks linear" symptom
+        # this function exists to prevent -- so treat a blank display/view the same as
+        # OCIO not being configured at all, rather than trusting the passthrough.
+        logger.debug("OCIO color_params has blank display/view; falling back to local sRGB transfer function")
+        return linear_to_srgb(rgb), COLOR_MODE_BASIC
+
     req_type = find_colorspace_transform_request_type()
     if req_type is None:
         msg = (
@@ -123,14 +134,28 @@ def build_straight_srgb_rgba(premultiplied_linear_rgba: np.ndarray, color_params
 
 
 def build_foreground_and_rgba(
-    premultiplied_linear_rgba: np.ndarray, color_params: Any | None
+    premultiplied_linear_rgba: np.ndarray, color_params: Any | None, fg_is_straight: bool = True
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Build CorridorKeyInference's `foreground` and `rgba` outputs from one shared conversion.
+    """Build CorridorKeyInference's `foreground` and `rgba` outputs from one shared buffer.
 
-    Both are derived from the same despilled/straight/sRGB buffer -- `foreground` is exactly
-    `rgba`'s RGB channels -- instead of `foreground` using the model's raw, undespilled
-    prediction. This guarantees the two outputs can't diverge in despill state or colorspace.
+    Both come from the same despilled buffer (rather than `foreground` using the model's raw,
+    undespilled prediction), so despill state and colorspace can no longer diverge between them.
+
+    `rgba` is always straight -- 8-bit PNG has no standard convention for premultiplied alpha,
+    so a fixed convention is safer for a "drop-in matte" output regardless of `fg_is_straight`.
+
+    `foreground` honours `fg_is_straight`: straight (default, matches the published checkpoints)
+    or alpha-premultiplied. The caller is responsible for passing CorridorKeyModule's own
+    `fg_is_straight` engine argument as `True` unconditionally when generating `comp` -- that
+    buffer is always straight in practice (CorridorKeyModule's own comment: "though our pipeline
+    forces straight"), so `comp`'s compositing formula must not be switched by this flag.
     """
+    premultiplied_rgb = premultiplied_linear_rgba[..., :3]
     rgba_srgb = build_straight_srgb_rgba(premultiplied_linear_rgba, color_params)
-    foreground_srgb = rgba_srgb[..., :3]
+
+    if fg_is_straight:
+        foreground_srgb = rgba_srgb[..., :3]
+    else:
+        foreground_srgb, _label = apply_ocio_or_local_srgb(premultiplied_rgb, color_params)
+
     return foreground_srgb, rgba_srgb

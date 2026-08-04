@@ -273,8 +273,9 @@ class CorridorKeyVideoInference(SuccessFailureNode):
                 type="bool",
                 default_value=True,
                 tooltip=(
-                    "If True, the foreground output is straight (unpremultiplied). "
-                    "If False, treated as premultiplied. Leave True for the published checkpoints."
+                    "If True, `foreground` is straight (unpremultiplied). If False, `foreground` is "
+                    "alpha-premultiplied. Leave True for the published checkpoints. Does not affect "
+                    "`composite`, which is always correctly composited regardless of this setting."
                 ),
             )
         )
@@ -388,7 +389,10 @@ class CorridorKeyVideoInference(SuccessFailureNode):
                 allowed_modes={ParameterMode.OUTPUT},
                 output_type="VideoUrlArtifact",
                 default_value=None,
-                tooltip="Single-channel straight alpha matte video (grayscale mp4). None when `output_format` is 'exr_sequence'.",
+                tooltip=(
+                    "Single-channel straight alpha matte video (grayscale mp4), including `auto_despeckle` "
+                    "cleanup when enabled. None when `output_format` is 'exr_sequence'."
+                ),
             )
         )
 
@@ -418,7 +422,10 @@ class CorridorKeyVideoInference(SuccessFailureNode):
                 allowed_modes={ParameterMode.OUTPUT},
                 output_type="Sequence",
                 default_value=None,
-                tooltip="Single-channel straight alpha matte as an EXR sequence. None when `output_format` is 'video'.",
+                tooltip=(
+                    "Single-channel straight alpha matte as an EXR sequence, including `auto_despeckle` "
+                    "cleanup when enabled. None when `output_format` is 'video'."
+                ),
             )
         )
 
@@ -725,7 +732,11 @@ class CorridorKeyVideoInference(SuccessFailureNode):
                         hints_np,
                         refiner_scale=refiner_scale,
                         input_is_linear=input_is_linear,
-                        fg_is_straight=fg_is_straight,
+                        # CorridorKeyModule's fg buffer is always straight in practice regardless of
+                        # this flag (its own comment: "though our pipeline forces straight") -- pass
+                        # True unconditionally so `comp`'s compositing formula is always correct. Our
+                        # own `fg_is_straight` parameter is instead applied to `foreground` below.
+                        fg_is_straight=True,
                         despill_strength=despill_strength,
                         auto_despeckle=auto_despeckle,
                         despeckle_size=despeckle_size,
@@ -736,14 +747,15 @@ class CorridorKeyVideoInference(SuccessFailureNode):
                     if isinstance(result, dict):
                         result = [result]
 
-                    alpha_stack = np.stack(
-                        [r["alpha"][..., 0] if r["alpha"].ndim == 3 else r["alpha"] for r in result], axis=0
-                    )
                     # Despilled/straight/sRGB, not result["fg"] (the model's raw undespilled
                     # prediction) -- matches CorridorKeyInference's foreground/rgba convergence
                     # fix and the tooltip's "despilled" claim (see GitHub issue #2).
                     processed_stack = np.stack([r["processed"] for r in result], axis=0)
-                    fg_stack, _ = cc.build_foreground_and_rgba(processed_stack, color_params)
+                    # processed_stack's alpha channel is the despeckled matte (when auto_despeckle is
+                    # True) -- result["alpha"] is the pre-despeckle raw prediction and was previously
+                    # used here, meaning auto_despeckle/despeckle_size had no effect on this output.
+                    alpha_stack = processed_stack[..., 3]
+                    fg_stack, _ = cc.build_foreground_and_rgba(processed_stack, color_params, fg_is_straight)
 
                     comp_stack = None
                     if generate_comp:
