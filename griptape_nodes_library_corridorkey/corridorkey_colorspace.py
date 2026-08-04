@@ -103,7 +103,7 @@ def apply_ocio_or_local_srgb(rgb: np.ndarray, color_params: Any | None) -> tuple
         raise ValueError(msg)
 
     logger.debug("OCIO: transform succeeded (%s -> %s/%s)", source_colorspace, display, view)
-    return result.pixels, f"ocio:{source_colorspace}->{display}/{view}"
+    return result.pixels, f"ocio:{source_colorspace}->{display}/{view}"  # type: ignore[attr-defined]
 
 
 def build_straight_srgb_rgba(premultiplied_linear_rgba: np.ndarray, color_params: Any | None) -> np.ndarray:

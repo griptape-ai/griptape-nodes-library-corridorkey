@@ -241,7 +241,7 @@ def _patch_connected_components_mps_race() -> None:
         unique_labels = torch.unique(comp)
         if unique_labels[0] != 0:
             unique_labels = torch.cat([torch.tensor([0], device=mask.device), unique_labels])
-        label_map = torch.zeros(unique_labels.max().item() + 1, dtype=torch.long, device=mask.device)
+        label_map = torch.zeros(int(unique_labels.max().item()) + 1, dtype=torch.long, device=mask.device)
         label_map[unique_labels] = torch.arange(len(unique_labels), device=mask.device)
         return label_map[comp]
 
