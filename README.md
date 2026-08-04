@@ -163,6 +163,15 @@ The first run will download the selected CorridorKey checkpoint (~300 MB) and, i
 
 The first run of `gvm` or `videomama` will download their (large) checkpoints through Griptape Nodes' Model Manager, with visible progress in the UI.
 
+## Runtime Patches
+
+CorridorKey vendors a third-party engine (`CorridorKeyModule`) and depends on `timm` for its Hiera backbone. On load, `corridorkey_common.py` applies two runtime patches (in-process only, idempotent, no installed files are modified) to work around upstream bugs that otherwise only surface on Apple Silicon (MPS):
+
+- **Hiera `.view()` → `.reshape()`** (`_patch_timm_hiera_view_bug`): `timm`'s `hiera_base_plus_224` backbone's `MaskUnitAttention.forward()` calls `.view()` on a tensor produced by a preceding `.permute()`, which raises `"view size is not compatible with input tensor's size and stride"` on MPS (the stride layout that triggers it doesn't come up on CPU/CUDA). Patches the forward pass to use `.reshape()` instead (a drop-in replacement that only copies when a view isn't possible), and makes `q`/`k`/`v` contiguous before `scaled_dot_product_attention`, which does its own internal `.view()` on its inputs.
+- **`connected_components` MPS race** (`_patch_connected_components_mps_race`): the despeckle pass's `connected_components()` (in the vendored `CorridorKeyModule.core.color_utils`) writes and reads its flood-fill buffer via boolean advanced indexing (`comp[mask == 1] = pooled[mask == 1]`). On MPS, the scatter and gather sides each trigger their own async nonzero-count kernel invocation, and the two occasionally disagree on the mask's true-count even given the same mask tensor — an indexing-kernel race, not a mask-recomputation issue, so hoisting the mask evaluation out of the loop doesn't fix it. Patched to use `torch.where` (an elementwise select with no variable-length indexing step) instead, which removes the race entirely (the race's documented symptom is a `RuntimeError: shape mismatch` crash inside `connected_components`, not silent data corruption).
+
+Also known, separate from the two patches above and **not yet fixed**: on some Apple Silicon Macs, the very first `CorridorKey Inference`/`CorridorKey Video Inference` call in a freshly-started engine process can return fully-NaN alpha/foreground/rgba (visibly all-black output), regardless of `auto_despeckle`. Every subsequent call in the same engine process has been reliable in testing. This looks like an MPS float16-autocast "cold start" numerical issue in the vendored model's forward pass itself (`torch.autocast(..., dtype=torch.float16)` in `CorridorKeyModule`'s `process_frame`), not something introduced by this library's code -- if you hit a fully black result on the first run after starting the engine, re-run the node.
+
 ## Troubleshooting
 
 ### Library Not Loading
