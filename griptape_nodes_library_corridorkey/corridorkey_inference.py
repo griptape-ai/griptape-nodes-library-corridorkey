@@ -1,10 +1,12 @@
 import logging
 
 from griptape.artifacts import ImageArtifact, ImageUrlArtifact
-from griptape_nodes.exe_types.core_types import Parameter, ParameterMode
+from griptape_nodes.exe_types.core_types import Parameter, ParameterMessage, ParameterMode
 from griptape_nodes.exe_types.node_types import AsyncResult, SuccessFailureNode
 from griptape_nodes.exe_types.param_components.huggingface.huggingface_repo_parameter import HuggingFaceRepoParameter
+from griptape_nodes.traits.options import Options
 
+from griptape_nodes_library_corridorkey import corridorkey_colorspace as cc
 from griptape_nodes_library_corridorkey import corridorkey_common as ck
 
 logger = logging.getLogger("corridorkey_library")
@@ -15,14 +17,29 @@ class CorridorKeyInference(SuccessFailureNode):
 
     Takes an RGB image and an optional coarse alpha-hint mask; if no hint is
     supplied, BiRefNet is used internally to generate one. Produces a clean
-    straight alpha matte, a despilled sRGB foreground, a linear premultiplied
-    RGBA composite, and an optional composite-on-checkerboard preview. Supports
-    both green-screen and blue-screen checkpoints with auto-download from
-    HuggingFace.
+    straight alpha matte, a despilled sRGB foreground, a straight sRGB RGBA
+    image colour-matched to the foreground, and an optional composite-on-
+    checkerboard preview. Supports both green-screen and blue-screen
+    checkpoints with auto-download from HuggingFace.
     """
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
+
+        self.add_node_element(
+            ParameterMessage(
+                name="usage_tip",
+                variant="tip",
+                title="Usage Tip",
+                value=(
+                    "Leave `alpha_hint` empty to have BiRefNet generate one automatically -- only supply "
+                    "your own hint if you need tighter control over the matte's coarse shape. Use `foreground` "
+                    "for a clean despilled plate, and `rgba` when you need a single drop-in matte image. Leave "
+                    "`color_mode` as 'basic' unless you need an OCIO display-view transform on `rgba`, in "
+                    "which case set it to 'ocio' and connect `color_params`."
+                ),
+            )
+        )
 
         # CorridorKey checkpoint selection (HuggingFace).
         self._model_param = HuggingFaceRepoParameter(
@@ -101,8 +118,9 @@ class CorridorKeyInference(SuccessFailureNode):
                 type="bool",
                 default_value=True,
                 tooltip=(
-                    "If True, the foreground output is straight (unpremultiplied). "
-                    "If False, treated as premultiplied. Leave True for the published checkpoints."
+                    "If True, `foreground` is straight (unpremultiplied). If False, `foreground` is "
+                    "alpha-premultiplied. Leave True for the published checkpoints. Does not affect "
+                    "`composite`, which is always correctly composited regardless of this setting."
                 ),
             )
         )
@@ -163,13 +181,48 @@ class CorridorKeyInference(SuccessFailureNode):
             )
         )
 
+        default_color_mode = (
+            cc.COLOR_MODE_OCIO if cc.find_colorspace_transform_request_type() is not None else cc.COLOR_MODE_BASIC
+        )
+
+        self.add_parameter(
+            Parameter(
+                name="color_mode",
+                allowed_modes={ParameterMode.INPUT, ParameterMode.PROPERTY},
+                type="str",
+                default_value=default_color_mode,
+                traits={Options(choices=[cc.COLOR_MODE_BASIC, cc.COLOR_MODE_OCIO])},
+                tooltip=(
+                    "Colour management used to convert the `rgba` output's internal linear data "
+                    "to display sRGB. 'basic' uses the local sRGB transfer function (no dependencies). "
+                    "'ocio' uses a connected `color_params` OCIO display-view transform, requiring the "
+                    "OpenColorIO library to be loaded."
+                ),
+            )
+        )
+
+        self.add_parameter(
+            Parameter(
+                name="color_params",
+                allowed_modes={ParameterMode.INPUT},
+                type="OCIOColorParamsArtifact",
+                input_types=["OCIOColorParamsArtifact"],
+                default_value=None,
+                tooltip="OCIO colour parameters (source colorspace, display, view). Required when `color_mode` is 'ocio'.",
+                ui_options={"hide": default_color_mode != cc.COLOR_MODE_OCIO},
+            )
+        )
+
         self.add_parameter(
             Parameter(
                 name="alpha",
                 allowed_modes={ParameterMode.OUTPUT},
                 output_type="ImageUrlArtifact",
                 default_value=None,
-                tooltip="Single-channel straight alpha matte (float 0-1) encoded as a grayscale PNG.",
+                tooltip=(
+                    "Single-channel straight alpha matte (float 0-1), including `auto_despeckle` cleanup "
+                    "when enabled, encoded as a grayscale PNG."
+                ),
             )
         )
 
@@ -200,8 +253,9 @@ class CorridorKeyInference(SuccessFailureNode):
                 output_type="ImageUrlArtifact",
                 default_value=None,
                 tooltip=(
-                    "Linear premultiplied RGBA (foreground * alpha, plus alpha channel) encoded as an "
-                    "8-bit PNG with alpha for use as a drop-in matte."
+                    "Straight (unpremultiplied) sRGB RGBA -- RGB channels identical to `foreground`, plus "
+                    "an alpha channel -- encoded as an 8-bit PNG for use as a drop-in matte. See `color_mode`/"
+                    "`color_params` for how the internal linear data is converted to sRGB."
                 ),
             )
         )
@@ -227,6 +281,13 @@ class CorridorKeyInference(SuccessFailureNode):
             errors.append(ValueError("image is required"))
 
         return errors if errors else None
+
+    def after_value_set(self, parameter: Parameter, value) -> None:
+        if parameter.name == "color_mode":
+            if value == cc.COLOR_MODE_OCIO:
+                self.show_parameter_by_name("color_params")
+            else:
+                self.hide_parameter_by_name("color_params")
 
     def process(self) -> AsyncResult[None]:
         yield lambda: self._run_inference()
@@ -288,7 +349,11 @@ class CorridorKeyInference(SuccessFailureNode):
             alpha_hint_np,
             refiner_scale=refiner_scale,
             input_is_linear=input_is_linear,
-            fg_is_straight=fg_is_straight,
+            # CorridorKeyModule's fg buffer is always straight in practice regardless of this
+            # flag (its own comment: "though our pipeline forces straight") -- pass True
+            # unconditionally so `comp`'s compositing formula is always the correct one. Our
+            # own `fg_is_straight` parameter is instead applied to `foreground` below.
+            fg_is_straight=True,
             despill_strength=despill_strength,
             auto_despeckle=auto_despeckle,
             despeckle_size=despeckle_size,
@@ -301,13 +366,23 @@ class CorridorKeyInference(SuccessFailureNode):
         if isinstance(result, list):
             result = result[0]
 
-        alpha_out = result["alpha"]
-        fg_out = result["fg"]
         rgba_out = result["processed"]
+        # rgba_out's alpha channel is the despeckled matte (when auto_despeckle is True) --
+        # result["alpha"] is the pre-despeckle raw prediction and was previously used here,
+        # meaning auto_despeckle/despeckle_size had no effect on this output at all.
+        alpha_out = rgba_out[..., 3:4]
+
+        color_mode = str(self.parameter_values.get("color_mode") or cc.COLOR_MODE_BASIC)
+        color_params = self.parameter_values.get("color_params") if color_mode == cc.COLOR_MODE_OCIO else None
+        if color_mode == cc.COLOR_MODE_OCIO and color_params is None:
+            raise ValueError("color_mode is 'ocio' but no color_params input is connected.")
+        foreground_srgb, rgba_srgb = cc.build_foreground_and_rgba(rgba_out, color_params, fg_is_straight)
 
         self.parameter_output_values["alpha"] = ck.save_image_artifact(ck.encode_grayscale_png(alpha_out), "alpha")
-        self.parameter_output_values["foreground"] = ck.save_image_artifact(ck.encode_rgb_png(fg_out), "foreground")
-        self.parameter_output_values["rgba"] = ck.save_image_artifact(ck.encode_rgba_png(rgba_out), "rgba")
+        self.parameter_output_values["foreground"] = ck.save_image_artifact(
+            ck.encode_rgb_png(foreground_srgb), "foreground"
+        )
+        self.parameter_output_values["rgba"] = ck.save_image_artifact(ck.encode_rgba_png(rgba_srgb), "rgba")
 
         if generate_comp and "comp" in result and result["comp"] is not None:
             comp_out = result["comp"]

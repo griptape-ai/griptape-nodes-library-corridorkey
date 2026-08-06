@@ -1,62 +1,81 @@
 SHELL := /bin/bash
 
 LIBRARY_JSON := griptape_nodes_library_corridorkey/griptape-nodes-library.json
+PYPROJECT := pyproject.toml
 
 .PHONY: version/get
 version/get: ## Get version.
 	@jq -r '.metadata.library_version' $(LIBRARY_JSON)
 
+.PHONY: version/write
+version/write: ## Write version to the library JSON and pyproject.toml. Usage: make version/write v=1.2.3
+	@if [[ -z "$(v)" ]]; then echo "version/write requires v=<version>" >&2; exit 1; fi
+	@set -e; \
+	trap 'rm -f $(LIBRARY_JSON).tmp $(PYPROJECT).tmp' EXIT; \
+	jq --indent 4 --arg v "$(v)" '.metadata.library_version = $$v' $(LIBRARY_JSON) > $(LIBRARY_JSON).tmp; \
+	awk -v v="$(v)" ' \
+		/^\[/ { project = ($$0 ~ /^\[project\][[:space:]]*$$/) } \
+		project && !done && /^version[[:space:]]*=/ { print "version = \"" v "\""; done = 1; next } \
+		{ print } \
+		END { if (!done) { print "no version field in the [project] table" > "/dev/stderr"; exit 1 } }' \
+		$(PYPROJECT) > $(PYPROJECT).tmp; \
+	mv $(LIBRARY_JSON).tmp $(LIBRARY_JSON); \
+	mv $(PYPROJECT).tmp $(PYPROJECT)
+
 .PHONY: version/set
 version/set: ## Set version. Usage: make version/set v=1.2.3
-	@jq --arg v "$(v)" '.metadata.library_version = $$v' $(LIBRARY_JSON) > $(LIBRARY_JSON).tmp
-	@mv $(LIBRARY_JSON).tmp $(LIBRARY_JSON)
-	@make version/commit
+	@$(MAKE) --no-print-directory version/write v="$(v)"
+	@$(MAKE) --no-print-directory version/commit
 
 .PHONY: version/patch
 version/patch: ## Bump patch version.
-	@CURRENT=$$(make version/get); \
+	@CURRENT=$$($(MAKE) --no-print-directory version/get); \
 	IFS='.' read -r major minor patch <<< "$$CURRENT"; \
 	NEW_VERSION="$${major}.$${minor}.$$((patch + 1))"; \
-	jq --arg v "$$NEW_VERSION" '.metadata.library_version = $$v' $(LIBRARY_JSON) > $(LIBRARY_JSON).tmp; \
-	mv $(LIBRARY_JSON).tmp $(LIBRARY_JSON); \
+	$(MAKE) --no-print-directory version/write v="$$NEW_VERSION"; \
 	echo "Bumped to $$NEW_VERSION"
-	@make version/commit
+	@$(MAKE) --no-print-directory version/commit
 
 .PHONY: version/minor
 version/minor: ## Bump minor version.
-	@CURRENT=$$(make version/get); \
+	@CURRENT=$$($(MAKE) --no-print-directory version/get); \
 	IFS='.' read -r major minor patch <<< "$$CURRENT"; \
 	NEW_VERSION="$${major}.$$((minor + 1)).0"; \
-	jq --arg v "$$NEW_VERSION" '.metadata.library_version = $$v' $(LIBRARY_JSON) > $(LIBRARY_JSON).tmp; \
-	mv $(LIBRARY_JSON).tmp $(LIBRARY_JSON); \
+	$(MAKE) --no-print-directory version/write v="$$NEW_VERSION"; \
 	echo "Bumped to $$NEW_VERSION"
-	@make version/commit
+	@$(MAKE) --no-print-directory version/commit
 
 .PHONY: version/major
 version/major: ## Bump major version.
-	@CURRENT=$$(make version/get); \
+	@CURRENT=$$($(MAKE) --no-print-directory version/get); \
 	IFS='.' read -r major minor patch <<< "$$CURRENT"; \
 	NEW_VERSION="$$((major + 1)).0.0"; \
-	jq --arg v "$$NEW_VERSION" '.metadata.library_version = $$v' $(LIBRARY_JSON) > $(LIBRARY_JSON).tmp; \
-	mv $(LIBRARY_JSON).tmp $(LIBRARY_JSON); \
+	$(MAKE) --no-print-directory version/write v="$$NEW_VERSION"; \
 	echo "Bumped to $$NEW_VERSION"
-	@make version/commit
+	@$(MAKE) --no-print-directory version/commit
 
 .PHONY: version/commit
 version/commit: ## Commit version.
-	@git add $(LIBRARY_JSON)
-	@git commit -m "chore: bump v$$(make version/get)"
+	@git add $(LIBRARY_JSON) $(PYPROJECT)
+	@git commit -m "chore: bump v$$($(MAKE) --no-print-directory version/get)"
 
 .PHONY: version/publish
 version/publish: ## Create and push git tags.
 	@git fetch --tags --force
-	@git tag "v$$(make version/get)"
-	@git tag stable -f
-	@git push origin "v$$(make version/get)"
-	@git push -f origin stable
+	@VERSION=$$($(MAKE) --no-print-directory version/get); \
+	git tag "v$$VERSION"; \
+	git tag stable -f; \
+	git push origin "v$$VERSION"; \
+	git push -f origin stable
 
 .PHONY: deps/sync
 deps/sync: ## Sync pip_dependencies in the library JSON from pyproject.toml.
+	@# NOT wired into install/core or install/all for this repo. pyproject.toml's dependencies are
+	@# intentionally the minimal set needed for local dev/CI (ruff/pyright/pytest); the vendored
+	@# CorridorKey submodule pulls in a much larger ML stack (torch, transformers, diffusers, timm,
+	@# etc.) that's only needed by the deployed library, installed separately by the advanced-library
+	@# bootstrap from $(LIBRARY_JSON)'s pip_dependencies. Running this target would overwrite that
+	@# full list with the minimal dev-only one and break the deployed library -- don't run it here.
 	@uv run python -c "\
 import tomllib, json; \
 pyproject = tomllib.load(open('pyproject.toml', 'rb')); \
@@ -68,14 +87,14 @@ print(f'Synced {len(deps)} dependencies to $(LIBRARY_JSON)')"
 
 .PHONY: install
 install: ## Install all dependencies.
-	@make install/all
+	@$(MAKE) --no-print-directory install/all
 
 .PHONY: install/core
-install/core: deps/sync ## Install core dependencies.
+install/core: ## Install core dependencies.
 	@uv sync
 
 .PHONY: install/all
-install/all: deps/sync ## Install all dependencies.
+install/all: ## Install all dependencies.
 	@uv sync --all-groups --all-extras
 
 .PHONY: install/dev
@@ -92,7 +111,7 @@ format: ## Format project.
 
 .PHONY: fix
 fix: ## Fix project.
-	@make format
+	@$(MAKE) --no-print-directory format
 	@uv run ruff check --fix --unsafe-fixes
 
 .PHONY: check

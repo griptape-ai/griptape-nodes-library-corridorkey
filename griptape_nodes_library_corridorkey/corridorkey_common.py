@@ -142,7 +142,7 @@ def encode_rgb_png(rgb: np.ndarray) -> bytes:
 
 
 def encode_rgba_png(rgba: np.ndarray) -> bytes:
-    """Encode a float32 [H, W, 4] linear premultiplied RGBA image as 8-bit PNG."""
+    """Encode a float32 [H, W, 4] straight sRGB RGBA image as 8-bit PNG."""
     arr = np.clip(rgba * 255.0, 0, 255).astype(np.uint8)
     pil = Image.fromarray(arr, mode="RGBA")
     buf = io.BytesIO()
@@ -206,20 +206,23 @@ def _patch_timm_hiera_view_bug() -> None:
         return self.proj(x)
 
     hiera.MaskUnitAttention.forward = patched_forward
-    hiera.MaskUnitAttention._corridorkey_reshape_patched = True
+    setattr(hiera.MaskUnitAttention, "_corridorkey_reshape_patched", True)  # noqa: B010
 
 
 def _patch_connected_components_mps_race() -> None:
     """Patch CorridorKeyModule's connected_components to fix an MPS boolean-index race.
 
-    connected_components() (color_utils.py) evaluates `mask == 1` twice per loop
-    iteration -- once to select the assignment target, once to gather from the
-    max_pool2d result -- across up to `max_iterations` iterations. On MPS, the two
-    evaluations occasionally disagree on their true-count (an async-execution race
-    in the MPS boolean-indexing kernel), raising "shape mismatch: value tensor ...
-    cannot be broadcast to indexing result ...". `mask` never changes across the
-    loop, so hoisting a single `mask == 1` evaluation out of the loop and reusing it
-    for both sides removes the race.
+    connected_components() (color_utils.py) writes and reads the flood-fill buffer
+    with boolean advanced indexing: `comp[mask == 1] = pooled[mask == 1]`. On MPS,
+    the scatter (assignment) and gather (read) sides each trigger their own
+    nonzero-count kernel invocation, and those two invocations occasionally
+    disagree on the true-count even when given the literal same mask tensor object
+    -- an async-execution race inside the MPS boolean-indexing kernel itself, not
+    just repeated-evaluation of `mask == 1`. Reusing a single hoisted `idx` tensor
+    (tried previously) does not fix this, since it's the indexing kernel calls that
+    race, not the mask computation. Replacing the boolean-index scatter/gather with
+    `torch.where`, an elementwise select with no variable-length indexing step,
+    removes the race entirely.
     """
     from CorridorKeyModule.core import color_utils
 
@@ -230,18 +233,19 @@ def _patch_connected_components_mps_race() -> None:
         bs, _, h, w = mask.shape
         comp = (torch.randperm(bs * w * h, device=mask.device, dtype=torch.float32) + 1.1).view(mask.shape)
         idx = mask == 1
-        comp[~idx] = 0
+        comp = torch.where(idx, comp, torch.zeros_like(comp))
 
         for _ in range(max_iterations):
-            comp[idx] = color_utils.F.max_pool2d(
+            pooled = color_utils.F.max_pool2d(
                 comp, kernel_size=(2 * min_component_distance) + 1, stride=1, padding=min_component_distance
-            )[idx]
+            )
+            comp = torch.where(idx, pooled, comp)
 
         comp = comp.long()
         unique_labels = torch.unique(comp)
         if unique_labels[0] != 0:
             unique_labels = torch.cat([torch.tensor([0], device=mask.device), unique_labels])
-        label_map = torch.zeros(unique_labels.max().item() + 1, dtype=torch.long, device=mask.device)
+        label_map = torch.zeros(int(unique_labels.max().item()) + 1, dtype=torch.long, device=mask.device)
         label_map[unique_labels] = torch.arange(len(unique_labels), device=mask.device)
         return label_map[comp]
 
