@@ -170,6 +170,21 @@ class CorridorKeyInference(SuccessFailureNode):
 
         self.add_parameter(
             Parameter(
+                name="source_passthrough",
+                allowed_modes={ParameterMode.INPUT, ParameterMode.PROPERTY},
+                type="bool",
+                default_value=True,
+                tooltip=(
+                    "If True, opaque interior regions (alpha > 0.95 -- face, body, clothes) use the "
+                    "original source pixels directly instead of the model's foreground reconstruction, "
+                    "preserving full source detail. The model's prediction is still used in the edge "
+                    "transition band (hair strands, green-screen spill, semi-transparency)."
+                ),
+            )
+        )
+
+        self.add_parameter(
+            Parameter(
                 name="generate_comp",
                 allowed_modes={ParameterMode.INPUT, ParameterMode.PROPERTY},
                 type="bool",
@@ -317,6 +332,7 @@ class CorridorKeyInference(SuccessFailureNode):
         auto_despeckle: bool = bool(self.parameter_values.get("auto_despeckle", True))
         despeckle_size: int = int(self.parameter_values.get("despeckle_size") or 400)
         refiner_scale: float = float(self.parameter_values.get("refiner_scale") or 1.0)
+        source_passthrough: bool = bool(self.parameter_values.get("source_passthrough", True))
         generate_comp: bool = bool(self.parameter_values.get("generate_comp", True))
 
         device = ck.get_device()
@@ -365,6 +381,12 @@ class CorridorKeyInference(SuccessFailureNode):
         # process_frame returns a single dict for batch size 1.
         if isinstance(result, list):
             result = result[0]
+
+        if source_passthrough:
+            original_srgb = cc.linear_to_srgb(image_np) if input_is_linear else image_np
+            result = ck.apply_source_passthrough(
+                original_srgb, result, despill_strength=despill_strength, screen_channel=screen_channel
+            )
 
         rgba_out = result["processed"]
         # rgba_out's alpha channel is the despeckled matte (when auto_despeckle is True) --

@@ -424,6 +424,77 @@ def load_videomama_pipeline(unet_repo_id: str, base_repo_id: str, device: str):
     return pipeline
 
 
+def _blend_source_passthrough(
+    original_srgb: np.ndarray, model_fg_srgb: np.ndarray, alpha: np.ndarray
+) -> np.ndarray:
+    """Blend original source pixels into the model's raw fg prediction in the opaque interior.
+
+    Ported from EZ-CorridorKey's source_passthrough (CorridorKeyModule/core/color_utils.py,
+    https://github.com/edenaion/EZ-CorridorKey): interior pixels (alpha > 0.95 -- face, body,
+    clothes) are taken from the original frame untouched, since they never needed the model's
+    reconstruction in the first place. Only the eroded/blurred edge transition band keeps the
+    model's prediction, which is what actually handles green-screen separation, hair strands,
+    and semi-transparency (GitHub issue #3). Erosion/blur radii scale with resolution (reference
+    points: 1080p -> 5/11px, 4K -> 10/23px) so the seam between source and model pixels stays
+    invisible at higher resolutions instead of looking too tight/sharp.
+    """
+    import cv2
+
+    h, w = original_srgb.shape[:2]
+    scale = max(h, w) / 1920.0
+    erode_px = max(3, round(5 * scale))
+    blur_px = max(7, round(11 * scale)) | 1  # ensure odd, as cv2.GaussianBlur requires
+
+    interior = ((alpha[..., 0] if alpha.ndim == 3 else alpha) > 0.95).astype(np.float32)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (erode_px * 2 + 1, erode_px * 2 + 1))
+    interior = cv2.erode(interior, kernel)
+    interior = cv2.GaussianBlur(interior, (blur_px, blur_px), 0)
+
+    blend = interior[:, :, np.newaxis]  # 1.0 = use original source, 0.0 = use model fg
+    return (blend * original_srgb + (1.0 - blend) * model_fg_srgb).astype(np.float32)
+
+
+def apply_source_passthrough(
+    original_srgb: np.ndarray,
+    result: dict[str, np.ndarray],
+    despill_strength: float,
+    screen_channel: int,
+) -> dict[str, np.ndarray]:
+    """Rebuild a CorridorKeyModule process_frame() result with source pixels passed through.
+
+    process_frame() bakes despill and alpha-premultiplication into `result["processed"]`/
+    `result["comp"]` before returning, so blending source pixels into the foreground has to
+    redo those two steps on top of the blended fg -- there is no hook inside process_frame()
+    to inject the blend earlier. `result["alpha"]` (the raw, pre-despeckle prediction) drives
+    the interior mask, matching EZ-CorridorKey's own ordering; `result["processed"]`'s alpha
+    channel (post-despeckle/garbage-matte) is reused as-is since despeckling only affects the
+    matte, not which pixels populate the foreground.
+    """
+    from CorridorKeyModule.core import color_utils as cu
+
+    blended_fg = _blend_source_passthrough(original_srgb, result["fg"], result["alpha"])
+
+    alpha_out = result["processed"][..., 3:4]
+    despilled_fg = cu.despill_opencv(blended_fg, limit_mode="average", strength=despill_strength, screen_channel=screen_channel)
+    fg_lin = cu.srgb_to_linear(despilled_fg)
+    fg_premul = cu.premultiply(fg_lin, alpha_out)
+
+    updated = dict(result)
+    updated["fg"] = blended_fg
+    updated["processed"] = np.concatenate([fg_premul, alpha_out], axis=-1)
+
+    if result.get("comp") is not None:
+        h, w = despilled_fg.shape[:2]
+        bg_lin = cu.srgb_to_linear(cu.create_checkerboard(w, h, checker_size=128, color1=0.15, color2=0.55))
+        # comp is always composited straight -- process_frame() is always called with
+        # fg_is_straight=True regardless of the node's own fg_is_straight parameter (see the
+        # nodes' own comments on that call), so the buffer being composited here is always straight.
+        comp_lin = cu.composite_straight(fg_lin, bg_lin, alpha_out)
+        updated["comp"] = cu.linear_to_srgb(comp_lin)
+
+    return updated
+
+
 def resolve_frame_paths(value) -> list[Path]:
     """Resolve a Sequence, list, or raw path/pattern string into an ordered list of frame paths."""
     if isinstance(value, Sequence):
