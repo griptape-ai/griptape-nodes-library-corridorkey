@@ -5,7 +5,7 @@
     "metadata": {
         "author": "Griptape, Inc.",
         "description": "Neural-network-based green/blue screen keying tool by Niko Pueringer / Corridor Digital. Takes an RGB frame plus a coarse alpha hint and outputs a clean straight alpha matte, a despilled foreground, and an optional checkerboard composite preview. Distributed as green-screen and blue-screen GreenFormer (Hiera + refiner) checkpoints with auto-download from HuggingFace.",
-        "library_version": "0.2.1",
+        "library_version": "0.3.0",
         "engine_version": "0.89.0",
         "tags": [
             "Griptape",
