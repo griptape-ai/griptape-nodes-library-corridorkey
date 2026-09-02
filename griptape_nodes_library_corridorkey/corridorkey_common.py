@@ -77,16 +77,6 @@ _gvm_cache: dict[tuple[str, str], Any] = {}
 _videomama_cache: dict[tuple[str, str, str], Any] = {}
 
 
-def get_device() -> str:
-    import torch
-
-    if torch.cuda.is_available():
-        return "cuda"
-    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
-
-
 def artifact_to_bytes(artifact: ImageArtifact | ImageUrlArtifact) -> bytes:
     if isinstance(artifact, ImageUrlArtifact):
         return File(artifact.value).read_bytes()
