@@ -69,21 +69,18 @@ version/publish: ## Create and push git tags.
 	git push -f origin stable
 
 .PHONY: deps/sync
-deps/sync: ## Sync pip_dependencies in the library JSON from pyproject.toml.
-	@# NOT wired into install/core or install/all for this repo. pyproject.toml's dependencies are
-	@# intentionally the minimal set needed for local dev/CI (ruff/pyright/pytest); the vendored
-	@# CorridorKey submodule pulls in a much larger ML stack (torch, transformers, diffusers, timm,
-	@# etc.) that's only needed by the deployed library, installed separately by the advanced-library
-	@# bootstrap from $(LIBRARY_JSON)'s pip_dependencies. Running this target would overwrite that
-	@# full list with the minimal dev-only one and break the deployed library -- don't run it here.
+deps/sync: ## Sync pip_dependencies and pip_dependencies_exec in the library JSON from pyproject.toml.
 	@uv run python -c "\
 import tomllib, json; \
 pyproject = tomllib.load(open('pyproject.toml', 'rb')); \
-deps = [d for d in pyproject['project']['dependencies'] if not d.startswith('griptape-nodes')]; \
+edit = [d for d in pyproject['project']['dependencies'] if not d.startswith('griptape-nodes')]; \
+execution = pyproject['project'].get('optional-dependencies', {}).get('exec', []); \
 lib = json.load(open('$(LIBRARY_JSON)')); \
-lib['metadata'].setdefault('dependencies', {})['pip_dependencies'] = deps; \
+deps = lib['metadata'].setdefault('dependencies', {}); \
+deps['pip_dependencies'] = edit; \
+deps['pip_dependencies_exec'] = execution; \
 open('$(LIBRARY_JSON)', 'w').write(json.dumps(lib, indent=4) + '\n'); \
-print(f'Synced {len(deps)} dependencies to $(LIBRARY_JSON)')"
+print(f'Synced {len(edit)} edit-time and {len(execution)} execution dependencies to $(LIBRARY_JSON)')"
 
 .PHONY: install
 install: ## Install all dependencies.

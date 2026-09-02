@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import torch
 from griptape.artifacts import ImageArtifact, ImageUrlArtifact
 from griptape_nodes.common.sequences import MissingItemPolicy, NoTokenBehavior, Sequence, SequenceEntry
 from griptape_nodes.files.file import File
@@ -79,6 +78,8 @@ _videomama_cache: dict[tuple[str, str, str], Any] = {}
 
 
 def get_device() -> str:
+    import torch
+
     if torch.cuda.is_available():
         return "cuda"
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
@@ -230,6 +231,8 @@ def _patch_connected_components_mps_race() -> None:
         return
 
     def patched_connected_components(mask, min_component_distance=1, max_iterations=100):
+        import torch
+
         bs, _, h, w = mask.shape
         comp = (torch.randperm(bs * w * h, device=mask.device, dtype=torch.float32) + 1.1).view(mask.shape)
         idx = mask == 1
@@ -344,6 +347,8 @@ def run_birefnet(handler, image_rgb_float: np.ndarray) -> np.ndarray:
     (preprocess -> sigmoid -> resize-to-source) directly against the loaded
     model. This mirrors the public `process()` flow in BiRefNetModule.wrapper.
     """
+    import torch
+
     # Deferred imports: BiRefNetModule is exposed via sys.path.insert in the
     # advanced library loader, since it isn't included in the hatch wheel.
     # torchvision is already available because torch installs it as a sibling.

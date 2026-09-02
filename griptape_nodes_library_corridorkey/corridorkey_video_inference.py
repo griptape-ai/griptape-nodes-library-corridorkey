@@ -3,7 +3,6 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-import torch
 from griptape_nodes.exe_types.core_types import Parameter, ParameterMessage, ParameterMode
 from griptape_nodes.exe_types.node_types import AsyncResult, SuccessFailureNode
 from griptape_nodes.exe_types.param_components.huggingface.huggingface_repo_parameter import HuggingFaceRepoParameter
@@ -771,6 +770,11 @@ class CorridorKeyVideoInference(SuccessFailureNode):
                         comp_stack = np.stack([r["comp"] for r in result], axis=0)
 
                     if output_format == "video":
+                        # Deferred: torch is an execution-time dependency, absent from the
+                        # process that only edits this node. Importing it at module scope would
+                        # make the node impossible to instantiate on a machine that never runs it.
+                        import torch
+
                         assert video_writers is not None
                         video_writers["alpha"].write(torch.from_numpy(alpha_stack).unsqueeze(1).float())
                         video_writers["foreground"].write(torch.from_numpy(fg_stack).permute(0, 3, 1, 2).float())

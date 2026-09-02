@@ -1,12 +1,12 @@
 {
     "name": "Griptape Nodes CorridorKey Library",
-    "library_schema_version": "0.5.0",
+    "library_schema_version": "0.12.0",
     "advanced_library_path": "corridorkey_library_advanced.py",
     "metadata": {
         "author": "Griptape, Inc.",
         "description": "Neural-network-based green/blue screen keying tool by Niko Pueringer / Corridor Digital. Takes an RGB frame plus a coarse alpha hint and outputs a clean straight alpha matte, a despilled foreground, and an optional checkerboard composite preview. Distributed as green-screen and blue-screen GreenFormer (Hiera + refiner) checkpoints with auto-download from HuggingFace.",
         "library_version": "0.3.0",
-        "engine_version": "0.89.0",
+        "engine_version": "0.99.0",
         "tags": [
             "Griptape",
             "AI",
@@ -18,11 +18,18 @@
         ],
         "dependencies": {
             "pip_dependencies": [
+                "numpy",
+                "Pillow"
+            ],
+            "pip_install_flags": [
+                "--preview",
+                "--torch-backend=auto"
+            ],
+            "pip_dependencies_exec": [
                 "torch>=2.13.0",
                 "torchvision>=0.28.0",
                 "timm==1.0.24",
                 "safetensors",
-                "numpy",
                 "opencv-python>=5.0.0.93",
                 "tqdm",
                 "huggingface-hub",
@@ -30,7 +37,6 @@
                 "diffusers",
                 "accelerate",
                 "peft",
-                "Pillow",
                 "einops",
                 "kornia",
                 "PIMS",
@@ -38,10 +44,6 @@
                 "imageio",
                 "matplotlib",
                 "av"
-            ],
-            "pip_install_flags": [
-                "--preview",
-                "--torch-backend=auto"
             ]
         },
         "resources": {
