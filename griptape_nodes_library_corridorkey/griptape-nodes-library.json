@@ -26,24 +26,7 @@
                 "--torch-backend=auto"
             ],
             "pip_dependencies_exec": [
-                "torch>=2.13.0",
-                "torchvision>=0.28.0",
-                "timm==1.0.24",
-                "safetensors",
-                "opencv-python>=5.0.0.93",
-                "tqdm",
-                "huggingface-hub",
-                "transformers",
-                "diffusers",
-                "accelerate",
-                "peft",
-                "einops",
-                "kornia",
-                "PIMS",
-                "easydict",
-                "imageio",
-                "matplotlib",
-                "av"
+                "CorridorKey @ git+https://github.com/nikopueringer/CorridorKey@8a4e4b444a4e3dc106af2b20b46b25a940f63bd8"
             ]
         },
         "resources": {

@@ -19,26 +19,16 @@ griptape-nodes-engine = { git = "https://github.com/griptape-ai/griptape-nodes-e
 # Execution-time only: the engine installs these into <library>/.venv-exec and puts
 # them on sys.path solely inside this library's worker process. They are absent from
 # the machine that only edits workflows, which is the point.
+# The CorridorKey package pins its own torch/torchvision/timm (including a timm fork), so it
+# is the single source of truth for this set. Restating those pins here made the resolve
+# unsatisfiable, which is what the deleted installer's --no-deps was hiding.
 exec = [
-    "torch>=2.13.0",
-    "torchvision>=0.28.0",
-    "timm==1.0.24",
-    "safetensors",
-    "opencv-python>=5.0.0.93",
-    "tqdm",
-    "huggingface-hub",
-    "transformers",
-    "diffusers",
-    "accelerate",
-    "peft",
-    "einops",
-    "kornia",
-    "PIMS",
-    "easydict",
-    "imageio",
-    "matplotlib",
-    "av",
+    "CorridorKey @ git+https://github.com/nikopueringer/CorridorKey@8a4e4b444a4e3dc106af2b20b46b25a940f63bd8",
 ]
+# The exec extra carries a git direct reference, which hatchling rejects by default.
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

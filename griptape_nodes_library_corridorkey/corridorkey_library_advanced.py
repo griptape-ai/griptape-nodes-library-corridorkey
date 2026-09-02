@@ -12,11 +12,11 @@ logger = logging.getLogger("corridorkey_library")
 class CorridorKeyLibraryAdvanced(AdvancedNodeLibrary):
     def before_library_nodes_loaded(self, library_data: LibrarySchema, library: Library) -> None:
         logger.info(f"Loading '{library_data.name}' library...")
+        # The CorridorKey package itself is declared in pip_dependencies_exec and installed by
+        # the engine. The submodule survives for BiRefNetModule alone, which upstream excludes
+        # from its wheel's `packages` list, so no install can deliver it -- only a source tree
+        # on sys.path can.
         submodule_path = self._init_submodule()
-        if not self._is_installed(submodule_path):
-            self._install_from_requirements(submodule_path)
-            self._install_pip_package(submodule_path)
-            self._write_installed_sentinel(submodule_path)
         # Always re-apply sys.path so BiRefNetModule is importable. sys.path
         # mutations do not persist across engine restarts, and adding the same
         # path twice is a harmless no-op via the membership check below.
@@ -35,12 +35,6 @@ class CorridorKeyLibraryAdvanced(AdvancedNodeLibrary):
     def _get_library_root(self) -> Path:
         return Path(__file__).parent
 
-    def _get_venv_python_path(self) -> Path:
-        root = self._get_library_root()
-        if sys.platform == "win32":
-            return root / ".venv" / "Scripts" / "python.exe"
-        return root / ".venv" / "bin" / "python"
-
     def _init_submodule(self) -> Path:
         library_root = self._get_library_root()
         submodule_dir = library_root / "CorridorKey"
@@ -56,87 +50,13 @@ class CorridorKeyLibraryAdvanced(AdvancedNodeLibrary):
         logger.info("Submodule initialized successfully")
         return submodule_dir
 
-    def _ensure_pip(self) -> None:
-        venv_python = self._get_venv_python_path()
-        result = subprocess.run([str(venv_python), "-m", "pip", "--version"], capture_output=True)
-        if result.returncode == 0:
-            return
-        subprocess.check_call([str(venv_python), "-m", "ensurepip", "--upgrade"])
-
-    def _get_submodule_commit(self, submodule_path: Path) -> str:
-        """Return the HEAD commit SHA of the submodule (the version pinned by the library author)."""
-        return subprocess.check_output(["git", "-C", str(submodule_path), "rev-parse", "HEAD"], text=True).strip()
-
-    def _get_installed_sentinel(self) -> Path:
-        return self._get_library_root() / ".installed_commit"
-
-    def _write_installed_sentinel(self, submodule_path: Path) -> None:
-        self._get_installed_sentinel().write_text(self._get_submodule_commit(submodule_path))
-
-    def _is_installed(self, submodule_path: Path) -> bool:
-        """Return True only if CorridorKeyModule is importable AND was installed from the currently-pinned commit.
-
-        This ensures that when a new library version ships with a different submodule commit,
-        the package is reinstalled rather than reusing a stale installation. The sys.path-only
-        BiRefNetModule is intentionally not checked here because sys.path is re-applied on every
-        load by `_install_syspath` regardless of this method's return value.
-        """
-        venv_python = self._get_venv_python_path()
-        result = subprocess.run(
-            [str(venv_python), "-c", "import CorridorKeyModule"],
-            capture_output=True,
-        )
-        if result.returncode != 0:
-            return False
-        sentinel = self._get_installed_sentinel()
-        if not sentinel.exists():
-            return False
-        return sentinel.read_text().strip() == self._get_submodule_commit(submodule_path)
-
-    def _install_from_requirements(self, submodule_path: Path) -> None:
-        """Install dependencies from the submodule's requirements.txt.
-
-        This preserves platform markers, version pins, and extra-index-url
-        directives exactly as the model author intended.
-
-        Uses --no-build-isolation so that packages requiring torch at build time
-        (e.g., auto_gptq, flash-attn) can find the torch already installed in the venv.
-        Without this flag, pip creates an isolated build environment that doesn't
-        see the venv's packages, causing "No module named 'torch'" build failures.
-        """
-        requirements_file = submodule_path / "requirements.txt"
-        if not requirements_file.exists():
-            logger.info("No requirements.txt found in submodule, skipping")
-            return
-        venv_python = self._get_venv_python_path()
-        self._ensure_pip()
-        logger.info(f"Installing requirements from {requirements_file}...")
-        subprocess.check_call(
-            [str(venv_python), "-m", "pip", "install", "--no-build-isolation", "-r", str(requirements_file)]
-        )
-        logger.info("Requirements installed successfully")
-
-    def _install_pip_package(self, submodule_path: Path) -> None:
-        """Install the submodule as a Python package (--no-deps since pip_dependencies handled deps).
-
-        This installs the packages listed in the submodule's hatch wheel (CorridorKeyModule,
-        gvm_core, VideoMaMaInferenceModule). It does NOT install BiRefNetModule, which lives in
-        the submodule root but is not in the wheel's package list -- BiRefNetModule is exposed
-        via `_install_syspath` instead.
-        """
-        venv_python = self._get_venv_python_path()
-        self._ensure_pip()
-        logger.info(f"Installing package from {submodule_path}...")
-        subprocess.check_call([str(venv_python), "-m", "pip", "install", "--no-deps", str(submodule_path)])
-        logger.info("Package installed successfully")
-
     def _install_syspath(self, submodule_path: Path) -> None:
         """Add the submodule root to sys.path so BiRefNetModule is importable.
 
-        BiRefNetModule lives at <submodule>/BiRefNetModule but is not in the hatch wheel's
-        `packages` list, so `pip install --no-deps` does NOT copy it into site-packages.
-        Path-injecting the submodule root makes `import BiRefNetModule` resolve to the
-        in-tree directory.
+        BiRefNetModule lives at <submodule>/BiRefNetModule but is not in the upstream wheel's
+        `packages` list, so installing the CorridorKey package does NOT copy it into
+        site-packages. Path-injecting the submodule root makes `import BiRefNetModule`
+        resolve to the in-tree directory.
         """
         if str(submodule_path) not in sys.path:
             sys.path.insert(0, str(submodule_path))
