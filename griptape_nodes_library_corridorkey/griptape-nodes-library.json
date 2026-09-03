@@ -26,7 +26,8 @@
                 "--torch-backend=auto"
             ],
             "pip_dependencies_exec": [
-                "CorridorKey @ git+https://github.com/nikopueringer/CorridorKey@8a4e4b444a4e3dc106af2b20b46b25a940f63bd8"
+                "CorridorKey @ git+https://github.com/nikopueringer/CorridorKey@8a4e4b444a4e3dc106af2b20b46b25a940f63bd8",
+    "setuptools<82"
             ]
         },
         "resources": {

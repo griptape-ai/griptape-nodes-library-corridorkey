@@ -24,6 +24,10 @@ griptape-nodes-engine = { git = "https://github.com/griptape-ai/griptape-nodes-e
 # unsatisfiable, which is what the deleted installer's --no-deps was hiding.
 exec = [
     "CorridorKey @ git+https://github.com/nikopueringer/CorridorKey@8a4e4b444a4e3dc106af2b20b46b25a940f63bd8",
+    # CorridorKey declares setuptools under its core inference deps, unpinned. setuptools 82.0.0
+    # removed pkg_resources (81.0.0 still ships it), and a package does not list setuptools as a
+    # runtime dependency unless something imports it.
+    "setuptools<82",
 ]
 # The exec extra carries a git direct reference, which hatchling rejects by default.
 [tool.hatch.metadata]
