@@ -18,9 +18,26 @@
         ],
         "dependencies": {
             "pip_dependencies": [
-                "opencv-python>=5.0.0.93",
                 "torch>=2.13.0",
-                "torchvision>=0.28.0"
+                "torchvision>=0.28.0",
+                "timm==1.0.24",
+                "safetensors",
+                "numpy",
+                "opencv-python>=5.0.0.93",
+                "tqdm",
+                "huggingface-hub",
+                "transformers",
+                "diffusers",
+                "accelerate",
+                "peft",
+                "Pillow",
+                "einops",
+                "kornia",
+                "PIMS",
+                "easydict",
+                "imageio",
+                "matplotlib",
+                "av"
             ],
             "pip_install_flags": [
                 "--preview",
