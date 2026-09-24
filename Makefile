@@ -70,6 +70,9 @@ version/publish: ## Create and push git tags.
 
 .PHONY: deps/sync
 deps/sync: ## Sync pip_dependencies and pip_dependencies_exec in the library JSON from pyproject.toml.
+	@# Both manifest dependency sets are derived here, so pyproject must keep the edit-time set in
+	@# [project] dependencies and the execution set in the `exec` extra. A dependency dropped from
+	@# either list disappears from the deployed library the next time this runs.
 	@uv run python -c "\
 import tomllib, json; \
 pyproject = tomllib.load(open('pyproject.toml', 'rb')); \
@@ -90,9 +93,16 @@ install: ## Install all dependencies.
 install/core: ## Install core dependencies.
 	@uv sync
 
+.PHONY: install/exec
+install/exec: ## Install execution-time dependencies into a separate local venv.
+	@# Not the default venv: the engine splices that one onto the orchestrator's sys.path, where an
+	@# execution package would satisfy a deferred import at edit time and hide a missing declaration.
+	@# .venv-exec without the suffix is the directory the engine builds and owns.
+	@UV_PROJECT_ENVIRONMENT=.venv-exec-local uv sync --extra exec
+
 .PHONY: install/all
-install/all: ## Install all dependencies.
-	@uv sync --all-groups --all-extras
+install/all: ## Install all dependency groups.
+	@uv sync --all-groups
 
 .PHONY: install/dev
 install/dev: ## Install dev dependencies.
