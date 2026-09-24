@@ -325,6 +325,21 @@ class CorridorKeyVideoInference(SuccessFailureNode):
 
         self.add_parameter(
             Parameter(
+                name="source_passthrough",
+                allowed_modes={ParameterMode.INPUT, ParameterMode.PROPERTY},
+                type="bool",
+                default_value=True,
+                tooltip=(
+                    "If True, opaque interior regions (alpha > 0.95 -- face, body, clothes) use the "
+                    "original source pixels directly instead of the model's foreground reconstruction, "
+                    "preserving full source detail. The model's prediction is still used in the edge "
+                    "transition band (hair strands, green-screen spill, semi-transparency)."
+                ),
+            )
+        )
+
+        self.add_parameter(
+            Parameter(
                 name="generate_comp",
                 allowed_modes={ParameterMode.INPUT, ParameterMode.PROPERTY},
                 type="bool",
@@ -621,6 +636,7 @@ class CorridorKeyVideoInference(SuccessFailureNode):
         auto_despeckle: bool = bool(self.parameter_values.get("auto_despeckle", True))
         despeckle_size: int = int(self.parameter_values.get("despeckle_size") or 400)
         refiner_scale: float = float(self.parameter_values.get("refiner_scale") or 1.0)
+        source_passthrough: bool = bool(self.parameter_values.get("source_passthrough", True))
         generate_comp: bool = bool(self.parameter_values.get("generate_comp", True))
         color_mode = str(self.parameter_values.get("color_mode") or cc.COLOR_MODE_BASIC)
         color_params = self.parameter_values.get("color_params") if color_mode == cc.COLOR_MODE_OCIO else None
@@ -746,6 +762,18 @@ class CorridorKeyVideoInference(SuccessFailureNode):
                     )
                     if isinstance(result, dict):
                         result = [result]
+
+                    if source_passthrough:
+                        for frame_idx, frame_result in enumerate(result):
+                            frame_srgb = images_np[frame_idx]
+                            if input_is_linear:
+                                frame_srgb = cc.linear_to_srgb(frame_srgb)
+                            result[frame_idx] = ck.apply_source_passthrough(
+                                frame_srgb,
+                                frame_result,
+                                despill_strength=despill_strength,
+                                screen_channel=screen_channel,
+                            )
 
                     # Despilled/straight/sRGB, not result["fg"] (the model's raw undespilled
                     # prediction) -- matches CorridorKeyInference's foreground/rgba convergence
