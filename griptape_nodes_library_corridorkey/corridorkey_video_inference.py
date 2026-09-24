@@ -607,6 +607,10 @@ class CorridorKeyVideoInference(SuccessFailureNode):
         return frame_paths, hint_frames
 
     def _do_inference(self) -> None:
+        # Deferred: torch and gvm_core are execution-time dependencies, absent from a process that
+        # only edits this node. At module scope they would make the node impossible to instantiate
+        # on a machine that never runs it.
+        import torch
         from gvm_core.gvm.utils.inference_utils import VideoWriter
 
         video_value = self.parameter_values.get("video")
@@ -770,11 +774,6 @@ class CorridorKeyVideoInference(SuccessFailureNode):
                         comp_stack = np.stack([r["comp"] for r in result], axis=0)
 
                     if output_format == "video":
-                        # Deferred: torch is an execution-time dependency, absent from the
-                        # process that only edits this node. Importing it at module scope would
-                        # make the node impossible to instantiate on a machine that never runs it.
-                        import torch
-
                         assert video_writers is not None
                         video_writers["alpha"].write(torch.from_numpy(alpha_stack).unsqueeze(1).float())
                         video_writers["foreground"].write(torch.from_numpy(fg_stack).permute(0, 3, 1, 2).float())

@@ -215,14 +215,13 @@ def _patch_connected_components_mps_race() -> None:
     `torch.where`, an elementwise select with no variable-length indexing step,
     removes the race entirely.
     """
+    import torch
     from CorridorKeyModule.core import color_utils
 
     if getattr(color_utils, "_corridorkey_cc_race_patched", False):
         return
 
     def patched_connected_components(mask, min_component_distance=1, max_iterations=100):
-        import torch
-
         bs, _, h, w = mask.shape
         comp = (torch.randperm(bs * w * h, device=mask.device, dtype=torch.float32) + 1.1).view(mask.shape)
         idx = mask == 1
@@ -337,11 +336,10 @@ def run_birefnet(handler, image_rgb_float: np.ndarray) -> np.ndarray:
     (preprocess -> sigmoid -> resize-to-source) directly against the loaded
     model. This mirrors the public `process()` flow in BiRefNetModule.wrapper.
     """
+    # Deferred: torch and torchvision are execution-time dependencies, absent from a process
+    # that only edits this node. BiRefNetModule is exposed by the advanced library's sys.path
+    # insert rather than installed, since upstream's wheel omits it.
     import torch
-
-    # Deferred imports: BiRefNetModule is exposed via sys.path.insert in the
-    # advanced library loader, since it isn't included in the hatch wheel.
-    # torchvision is already available because torch installs it as a sibling.
     from BiRefNetModule.wrapper import ImagePreprocessor, half_precision
     from torchvision import transforms
 

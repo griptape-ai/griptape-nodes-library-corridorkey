@@ -70,6 +70,9 @@ version/publish: ## Create and push git tags.
 
 .PHONY: deps/sync
 deps/sync: ## Sync pip_dependencies and pip_dependencies_exec in the library JSON from pyproject.toml.
+	@# Both manifest dependency sets are derived here, so pyproject must keep the edit-time set in
+	@# [project] dependencies and the execution set in the `exec` extra. A dependency dropped from
+	@# either list disappears from the deployed library the next time this runs.
 	@uv run python -c "\
 import tomllib, json; \
 pyproject = tomllib.load(open('pyproject.toml', 'rb')); \
