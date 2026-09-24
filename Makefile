@@ -93,9 +93,16 @@ install: ## Install all dependencies.
 install/core: ## Install core dependencies.
 	@uv sync
 
+.PHONY: install/exec
+install/exec: ## Install execution-time dependencies into a separate local venv.
+	@# Not the default venv: the engine splices that one onto the orchestrator's sys.path, where an
+	@# execution package would satisfy a deferred import at edit time and hide a missing declaration.
+	@# .venv-exec without the suffix is the directory the engine builds and owns.
+	@UV_PROJECT_ENVIRONMENT=.venv-exec-local uv sync --extra exec
+
 .PHONY: install/all
-install/all: ## Install all dependencies.
-	@uv sync --all-groups --all-extras
+install/all: ## Install all dependency groups.
+	@uv sync --all-groups
 
 .PHONY: install/dev
 install/dev: ## Install dev dependencies.
