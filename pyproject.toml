@@ -5,6 +5,10 @@ description = "Griptape Nodes library wrapping the CorridorKey neural green/blue
 authors = [{ name = "Griptape, Inc.", email = "hello@griptape.ai" }]
 readme = "README.md"
 requires-python = "~=3.12.0"
+# The edit-time set, and nothing more. The execution set is declared only in
+# pip_dependencies_exec: the engine installs that additively with `uv pip install`, so it
+# never has to co-resolve with the engine's own closure. An extra here would, and one
+# incompatible pin anywhere in it would then fail `uv lock` for the whole project.
 dependencies = [
     "numpy",
     "Pillow",
@@ -12,25 +16,6 @@ dependencies = [
 
 [tool.uv.sources]
 griptape-nodes-engine = { git = "https://github.com/griptape-ai/griptape-nodes-engine", rev = "stable" }
-
-
-[project.optional-dependencies]
-# Execution-time only: the engine installs these into <library>/.venv-exec and puts
-# them on sys.path solely inside this library's worker process. They are absent from
-# the machine that only edits workflows, which is the point.
-# The CorridorKey package pins its own torch/torchvision/timm (including a timm fork), so it
-# is the single source of truth for this set. Restating those pins here made the resolve
-# unsatisfiable, which is what the deleted installer's --no-deps was hiding.
-exec = [
-    "CorridorKey @ git+https://github.com/nikopueringer/CorridorKey@8a4e4b444a4e3dc106af2b20b46b25a940f63bd8",
-    # CorridorKey declares setuptools under its core inference deps, unpinned. setuptools 82.0.0
-    # removed pkg_resources (81.0.0 still ships it), and a package does not list setuptools as a
-    # runtime dependency unless something imports it.
-    "setuptools<82",
-]
-# The exec extra carries a git direct reference, which hatchling rejects by default.
-[tool.hatch.metadata]
-allow-direct-references = true
 
 [build-system]
 requires = ["hatchling"]
