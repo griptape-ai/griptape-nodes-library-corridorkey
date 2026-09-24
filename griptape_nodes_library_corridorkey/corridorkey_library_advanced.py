@@ -5,6 +5,7 @@ from pathlib import Path
 
 from griptape_nodes.node_library.advanced_node_library import AdvancedNodeLibrary
 from griptape_nodes.node_library.library_registry import Library, LibrarySchema
+from griptape_nodes.retained_mode.griptape_nodes import GriptapeNodes
 
 logger = logging.getLogger("corridorkey_library")
 
@@ -12,15 +13,19 @@ logger = logging.getLogger("corridorkey_library")
 class CorridorKeyLibraryAdvanced(AdvancedNodeLibrary):
     def before_library_nodes_loaded(self, library_data: LibrarySchema, library: Library) -> None:
         logger.info(f"Loading '{library_data.name}' library...")
-        # The CorridorKey package itself is declared in pip_dependencies_exec and installed by
-        # the engine. The submodule survives for BiRefNetModule alone, which upstream excludes
-        # from its wheel's `packages` list, so no install can deliver it -- only a source tree
-        # on sys.path can.
-        submodule_path = self._init_submodule()
-        # Always re-apply sys.path so BiRefNetModule is importable. sys.path
-        # mutations do not persist across engine restarts, and adding the same
-        # path twice is a harmless no-op via the membership check below.
-        self._install_syspath(submodule_path)
+        # The submodule and its sys.path injection populate the execution environment
+        # (BiRefNetModule, excluded from upstream's wheel `packages` list), which only
+        # the worker imports.
+        if GriptapeNodes.LibraryManager().is_worker:
+            # The CorridorKey package itself is declared in pip_dependencies_exec and installed by
+            # the engine. The submodule survives for BiRefNetModule alone, which upstream excludes
+            # from its wheel's `packages` list, so no install can deliver it -- only a source tree
+            # on sys.path can.
+            submodule_path = self._init_submodule()
+            # Always re-apply sys.path so BiRefNetModule is importable. sys.path
+            # mutations do not persist across engine restarts, and adding the same
+            # path twice is a harmless no-op via the membership check below.
+            self._install_syspath(submodule_path)
         # The engine loads each node .py file as a standalone dynamic module by
         # file path, not as part of an installed `griptape_nodes_library_corridorkey`
         # package, so `from griptape_nodes_library_corridorkey import corridorkey_common`
