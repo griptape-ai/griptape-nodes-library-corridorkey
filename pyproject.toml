@@ -1,6 +1,6 @@
 [project]
 name = "griptape-nodes-library-corridorkey"
-version = "0.3.0"
+version = "0.4.0"
 description = "Griptape Nodes library wrapping the CorridorKey neural green/blue screen keying model."
 authors = [{ name = "Griptape, Inc.", email = "hello@griptape.ai" }]
 readme = "README.md"

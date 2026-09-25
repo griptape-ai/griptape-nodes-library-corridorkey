@@ -10,7 +10,7 @@ The library exposes two nodes: `CorridorKey Inference`, which handles the full p
 
 ## Requirements
 
-- **GPU**: CUDA (NVIDIA), Apple Silicon MPS, or AMD ROCm (Linux). CPU fallback is supported but slow. Minimum 6-8 GB VRAM is recommended for 2048x2048 inference. The video node's `gvm` and `videomama` hint sources are only tested on CUDA GPUs with ~80 GB VRAM on a single GPU (no multi-GPU VRAM pooling); `birefnet` (the default hint source) works on any GPU including Apple Silicon.
+- **GPU**: CUDA (NVIDIA) or Apple Silicon MPS. CPU fallback is supported but slow. Minimum 6-8 GB VRAM is recommended for 2048x2048 inference. The video node's `gvm` and `videomama` hint sources are only tested on CUDA GPUs with ~80 GB VRAM on a single GPU (no multi-GPU VRAM pooling); `birefnet` (the default hint source) works on any GPU including Apple Silicon.
 - **Griptape Nodes Engine**: Version 0.89.0 or later
 
 ## Nodes
@@ -106,7 +106,7 @@ Models are downloaded automatically on first use and cached for subsequent runs.
 ### Prerequisites
 
 - [Griptape Nodes](https://github.com/griptape-ai/griptape-nodes) installed and running
-- A CUDA-capable NVIDIA GPU, an Apple Silicon Mac, or an AMD ROCm-capable Linux machine
+- A CUDA-capable NVIDIA GPU or an Apple Silicon Mac
 
 ### Dependencies
 
@@ -190,7 +190,6 @@ Also investigated, separate from the two patches above: on some Apple Silicon Ma
 - Verify your GPU drivers are up to date
 - For NVIDIA GPUs, ensure CUDA is properly installed and `nvidia-smi` reports your GPU correctly
 - For Apple Silicon, ensure you're running on macOS 12.3 or later
-- For AMD ROCm, ensure ROCm 6+ is installed and `/opt/rocm` exists (Linux only)
 
 ### Out of Memory Errors
 
