@@ -108,6 +108,10 @@ Models are downloaded automatically on first use and cached for subsequent runs.
 - [Griptape Nodes](https://github.com/griptape-ai/griptape-nodes) installed and running
 - A CUDA-capable NVIDIA GPU, an Apple Silicon Mac, or an AMD ROCm-capable Linux machine
 
+### Dependencies
+
+`pip_dependencies` in the library JSON is the edit-time set, installed wherever the library is registered. `pip_dependencies_exec` is installed only into the worker process that runs a node, and holds the CorridorKey package itself, which is the single source of truth for the ML stack: it pins its own `torch`, `torchvision`, and a `timm` fork. Restating any of those pins alongside it makes the resolve unsatisfiable. The one addition is `setuptools<82`, because 82.0.0 dropped `pkg_resources` and CorridorKey declares `setuptools` unpinned.
+
 ### Install the Library
 
 1. **Clone the repository** to your Griptape Nodes workspace directory:

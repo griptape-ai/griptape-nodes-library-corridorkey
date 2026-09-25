@@ -70,12 +70,9 @@ version/publish: ## Create and push git tags.
 
 .PHONY: deps/sync
 deps/sync: ## Sync pip_dependencies in the library JSON from pyproject.toml.
-	@# NOT wired into install/core or install/all for this repo. pyproject.toml's dependencies are
-	@# intentionally the minimal set needed for local dev/CI (ruff/pyright/pytest); the vendored
-	@# CorridorKey submodule pulls in a much larger ML stack (torch, transformers, diffusers, timm,
-	@# etc.) that's only needed by the deployed library, installed separately by the advanced-library
-	@# bootstrap from $(LIBRARY_JSON)'s pip_dependencies. Running this target would overwrite that
-	@# full list with the minimal dev-only one and break the deployed library -- don't run it here.
+	@# Deliberately not wired into install/core or install/all, and deliberately blind to
+	@# pip_dependencies_exec: the execution set is declared in $(LIBRARY_JSON) alone, so a sync that
+	@# derived it from pyproject would find nothing to derive it from and empty it.
 	@uv run python -c "\
 import tomllib, json; \
 pyproject = tomllib.load(open('pyproject.toml', 'rb')); \

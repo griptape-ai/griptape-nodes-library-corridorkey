@@ -3,7 +3,6 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-import torch
 from griptape_nodes.exe_types.core_types import Parameter, ParameterMessage, ParameterMode
 from griptape_nodes.exe_types.node_types import AsyncResult, SuccessFailureNode
 from griptape_nodes.exe_types.param_components.huggingface.huggingface_repo_parameter import HuggingFaceRepoParameter
@@ -528,7 +527,7 @@ class CorridorKeyVideoInference(SuccessFailureNode):
 
     def _load_alpha_hint_frames_gvm(self, frame_paths: list[Path], tmp_path: Path) -> list[np.ndarray]:
         """Precompute the whole clip's alpha hints with GVM (needs full-clip context for temporal consistency)."""
-        device = ck.get_device()
+        device = self.execution_device
         gvm_repo_id, _ = self._gvm_param.get_repo_revision()
         processor = ck.load_gvm_processor(gvm_repo_id, device)
 
@@ -580,7 +579,7 @@ class CorridorKeyVideoInference(SuccessFailureNode):
         mask_paths = mask_paths[:frame_count]
 
         chunk_size = int(self.parameter_values.get("videomama_chunk_size") or 24)
-        device = ck.get_device()
+        device = self.execution_device
         unet_repo_id, _ = self._videomama_unet_param.get_repo_revision()
         base_repo_id, _ = self._videomama_base_param.get_repo_revision()
         pipeline = ck.load_videomama_pipeline(unet_repo_id, base_repo_id, device)
@@ -608,6 +607,10 @@ class CorridorKeyVideoInference(SuccessFailureNode):
         return frame_paths, hint_frames
 
     def _do_inference(self) -> None:
+        # Deferred: torch and gvm_core are execution-time dependencies, absent from a process that
+        # only edits this node. At module scope they would make the node impossible to instantiate
+        # on a machine that never runs it.
+        import torch
         from gvm_core.gvm.utils.inference_utils import VideoWriter
 
         video_value = self.parameter_values.get("video")
@@ -633,7 +636,7 @@ class CorridorKeyVideoInference(SuccessFailureNode):
         max_frames_raw: int = int(self.parameter_values.get("max_frames") or 0)
         max_frames: int | None = max_frames_raw if max_frames_raw > 0 else None
 
-        device = ck.get_device()
+        device = self.execution_device
         logger.info("CorridorKey video inference: device=%s hint_source=%s", device, hint_source)
         if hint_source in ("gvm", "videomama") and device != "cuda":
             logger.warning(
