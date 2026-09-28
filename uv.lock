@@ -435,8 +435,8 @@ wheels = [
 
 [[package]]
 name = "griptape-nodes-engine"
-version = "0.102.0"
-source = { git = "https://github.com/griptape-ai/griptape-nodes-engine?rev=latest#697e054a90b9f630f3bb0309ac0657664cfb470b" }
+version = "0.102.1"
+source = { git = "https://github.com/griptape-ai/griptape-nodes-engine?rev=stable#123e30512015dcc0d7dc10adc54b3446a2e43b4d" }
 dependencies = [
     { name = "anyio" },
     { name = "asyncio-thread-runner" },
@@ -499,7 +499,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "griptape-nodes-engine", git = "https://github.com/griptape-ai/griptape-nodes-engine?rev=latest" },
+    { name = "griptape-nodes-engine", git = "https://github.com/griptape-ai/griptape-nodes-engine?rev=stable" },
     { name = "pyright", specifier = ">=1.1.396" },
     { name = "pytest" },
     { name = "pytest-asyncio", specifier = ">=0.21.0" },

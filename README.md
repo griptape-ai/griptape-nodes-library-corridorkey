@@ -110,7 +110,7 @@ Models are downloaded automatically on first use and cached for subsequent runs.
 
 ### Dependencies
 
-`pip_dependencies` in the library JSON is the edit-time set, installed wherever the library is registered. `pip_dependencies_exec` is installed only into the worker process that runs a node, and holds the CorridorKey package itself, which is the single source of truth for the ML stack: it pins its own `torch`, `torchvision`, and a `timm` fork. Restating any of those pins alongside it makes the resolve unsatisfiable. The one addition is `setuptools<82`, because 82.0.0 dropped `pkg_resources` and CorridorKey declares `setuptools` unpinned.
+`pip_dependencies` in the library JSON is the edit-time set, installed wherever the library is registered, and holds only what importing and instantiating a node needs. `pip_dependencies_exec` is the ML stack, installed into `.venv-exec`, which only the worker process that runs a node ever reads. On top of that, the advanced library installs the pinned CorridorKey submodule's own `requirements.txt` and then the submodule itself with `--no-deps`, both into the same `.venv-exec`; `BiRefNetModule` is absent from the wheel's package list, so it is reached through `sys.path` rather than installed. The one entry that is not carried over from the pre-worker set is `setuptools<82`, because 82.0.0 dropped `pkg_resources` and CorridorKey declares `setuptools` unpinned.
 
 ### Install the Library
 
