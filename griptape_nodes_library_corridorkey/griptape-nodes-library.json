@@ -41,8 +41,7 @@
                 "easydict",
                 "imageio",
                 "matplotlib",
-                "av",
-                "setuptools<82"
+                "av"
             ],
             "pip_install_flags": [
                 "--preview",

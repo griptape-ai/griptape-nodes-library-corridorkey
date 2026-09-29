@@ -110,7 +110,7 @@ Models are downloaded automatically on first use and cached for subsequent runs.
 
 ### Dependencies
 
-`pip_dependencies` in the library JSON is the edit-time set, installed wherever the library is registered, and holds only what importing and instantiating a node needs. `pip_dependencies_exec` is the ML stack, installed into `.venv-exec`, which only the worker process that runs a node ever reads. On top of that, the advanced library installs the pinned CorridorKey submodule itself with `--no-deps` into the same `.venv-exec`, because `BiRefNetModule` is absent from the wheel's package list and is reached through `sys.path` rather than installed. The one entry not carried over from the pre-worker set is `setuptools<82`, because 82.0.0 dropped `pkg_resources` and CorridorKey declares `setuptools` unpinned.
+`pip_dependencies` in the library JSON is the edit-time set, installed wherever the library is registered, and holds only what importing and instantiating a node needs. `pip_dependencies_exec` is the ML stack, installed into `.venv-exec`, which only the worker process that runs a node ever reads. On top of that, the advanced library installs the pinned CorridorKey submodule itself with `--no-deps` into the same `.venv-exec`, because `BiRefNetModule` is absent from the wheel's package list and is reached through `sys.path` rather than installed.
 
 ### Install the Library
 
