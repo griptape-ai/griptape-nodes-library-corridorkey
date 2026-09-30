@@ -5,6 +5,7 @@ from pathlib import Path
 
 from griptape_nodes.node_library.advanced_node_library import AdvancedNodeLibrary
 from griptape_nodes.node_library.library_registry import Library, LibrarySchema
+from griptape_nodes.retained_mode.griptape_nodes import GriptapeNodes
 
 logger = logging.getLogger("corridorkey_library")
 
@@ -12,15 +13,18 @@ logger = logging.getLogger("corridorkey_library")
 class CorridorKeyLibraryAdvanced(AdvancedNodeLibrary):
     def before_library_nodes_loaded(self, library_data: LibrarySchema, library: Library) -> None:
         logger.info(f"Loading '{library_data.name}' library...")
-        submodule_path = self._init_submodule()
-        if not self._is_installed(submodule_path):
-            self._install_from_requirements(submodule_path)
-            self._install_pip_package(submodule_path)
-            self._write_installed_sentinel(submodule_path)
-        # Always re-apply sys.path so BiRefNetModule is importable. sys.path
-        # mutations do not persist across engine restarts, and adding the same
-        # path twice is a harmless no-op via the membership check below.
-        self._install_syspath(submodule_path)
+        # Only the worker imports CorridorKeyModule or BiRefNetModule, and everything below
+        # installs into or points at .venv-exec, which no other process reads.
+        if GriptapeNodes.LibraryManager().is_worker:
+            submodule_path = self._init_submodule()
+            if not self._is_installed(submodule_path):
+                self._install_from_requirements(submodule_path)
+                self._install_pip_package(submodule_path)
+                self._write_installed_sentinel(submodule_path)
+            # Always re-apply sys.path so BiRefNetModule is importable. sys.path
+            # mutations do not persist across engine restarts, and adding the same
+            # path twice is a harmless no-op via the membership check below.
+            self._install_syspath(submodule_path)
         # The engine loads each node .py file as a standalone dynamic module by
         # file path, not as part of an installed `griptape_nodes_library_corridorkey`
         # package, so `from griptape_nodes_library_corridorkey import corridorkey_common`
@@ -36,10 +40,17 @@ class CorridorKeyLibraryAdvanced(AdvancedNodeLibrary):
         return Path(__file__).parent
 
     def _get_venv_python_path(self) -> Path:
+        """Return the interpreter of the execution environment.
+
+        The engine builds `.venv-exec` from `pip_dependencies_exec` and awaits it before spawning
+        a worker, so it exists by the time this runs. It is the environment the worker receives as
+        PYTHONPATH, which makes it the only one where an install of CorridorKeyModule is visible
+        to a node.
+        """
         root = self._get_library_root()
         if sys.platform == "win32":
-            return root / ".venv" / "Scripts" / "python.exe"
-        return root / ".venv" / "bin" / "python"
+            return root / ".venv-exec" / "Scripts" / "python.exe"
+        return root / ".venv-exec" / "bin" / "python"
 
     def _init_submodule(self) -> Path:
         library_root = self._get_library_root()
@@ -117,7 +128,7 @@ class CorridorKeyLibraryAdvanced(AdvancedNodeLibrary):
         logger.info("Requirements installed successfully")
 
     def _install_pip_package(self, submodule_path: Path) -> None:
-        """Install the submodule as a Python package (--no-deps since pip_dependencies handled deps).
+        """Install the submodule as a Python package (--no-deps since pip_dependencies_exec handled deps).
 
         This installs the packages listed in the submodule's hatch wheel (CorridorKeyModule,
         gvm_core, VideoMaMaInferenceModule). It does NOT install BiRefNetModule, which lives in

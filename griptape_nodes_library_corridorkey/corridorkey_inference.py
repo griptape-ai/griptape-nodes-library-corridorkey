@@ -319,7 +319,7 @@ class CorridorKeyInference(SuccessFailureNode):
         refiner_scale: float = float(self.parameter_values.get("refiner_scale") or 1.0)
         generate_comp: bool = bool(self.parameter_values.get("generate_comp", True))
 
-        device = ck.get_device()
+        device = self.execution_device
         logger.info("CorridorKey inference: device=%s", device)
 
         model_repo_id, _ = self._model_param.get_repo_revision()
