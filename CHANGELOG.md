@@ -10,4 +10,4 @@ the `library_version` in `griptape_nodes_library_corridorkey/griptape-nodes-libr
 
 <!-- Entries go in changelog.d/, one file each. See changelog.d/README.md. -->
 
-[Unreleased]: https://github.com/griptape-ai/griptape-nodes-library-corridorkey/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/griptape-ai/griptape-nodes-library-corridorkey/compare/3eec92cd180c153c5b39da8897812f8ce6196a25...HEAD
