@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 from griptape.artifacts import ImageArtifact, ImageUrlArtifact
 from griptape_nodes.common.sequences import MissingItemPolicy, NoTokenBehavior, Sequence, SequenceEntry
+from griptape_nodes.exe_types.core_types import NodeError
 from griptape_nodes.files.file import File
 from griptape_nodes.files.project_file import ProjectFileDestination
 from griptape_nodes.retained_mode.events.os_events import ScanSequencesRequest, ScanSequencesResultSuccess
@@ -449,12 +450,14 @@ def resolve_frame_paths(value) -> list[Path]:
             )
         )
         if not isinstance(result, ScanSequencesResultSuccess) or not result.has_entries:
-            raise ValueError(f"Could not resolve '{value}' to a frame sequence")
+            raise NodeError(f"Could not find any frames at '{value}'. Check the path or sequence pattern.")
         entries = [entry for sequence in result.sequences for entry in sequence.entries]
         entries.sort(key=lambda entry: entry.number)
         return [Path(entry.path) for entry in entries]
 
-    raise ValueError(f"Unsupported sequence value type: {type(value)}")
+    raise NodeError(
+        f"Unsupported frame sequence input of type {type(value).__name__}. Connect a video, an image sequence, or a path."
+    )
 
 
 def materialize_video_as_sequence(video_path: str, out_dir: Path) -> tuple[list[Path], float]:

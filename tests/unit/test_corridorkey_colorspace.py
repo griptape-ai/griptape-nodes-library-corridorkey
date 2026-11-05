@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from griptape_nodes.exe_types.core_types import NodeError
 
 from griptape_nodes_library_corridorkey import corridorkey_colorspace as ck
 
@@ -87,7 +88,7 @@ class TestApplyOcioOrLocalSrgb:
     def test_raises_when_ocio_library_not_loaded(self) -> None:
         linear = np.zeros((1, 1, 3), dtype=np.float32)
         with patch.object(ck, "find_colorspace_transform_request_type", return_value=None):
-            with pytest.raises(ValueError, match="not loaded"):
+            with pytest.raises(NodeError, match="not loaded"):
                 ck.apply_ocio_or_local_srgb(linear, FakeColorParams())
 
     def test_raises_on_missing_attribute(self) -> None:
@@ -97,7 +98,7 @@ class TestApplyOcioOrLocalSrgb:
             source_colorspace = "scene_linear"
             # missing display/view/config_path
 
-        with pytest.raises(ValueError, match="missing a required attribute"):
+        with pytest.raises(NodeError, match="missing a required attribute"):
             ck.apply_ocio_or_local_srgb(linear, IncompleteColorParams())
 
     def test_dispatches_through_ocio_and_returns_pixels(self) -> None:
@@ -141,7 +142,7 @@ class TestApplyOcioOrLocalSrgb:
         with (
             patch.object(ck, "find_colorspace_transform_request_type", return_value=req_type),
             patch.object(ck, "GriptapeNodes", mock_gn),
-            pytest.raises(ValueError, match="unknown colorspace"),
+            pytest.raises(NodeError, match="unknown colorspace"),
         ):
             ck.apply_ocio_or_local_srgb(linear, FakeColorParams())
 
@@ -151,7 +152,7 @@ class TestApplyOcioOrLocalSrgb:
 
         with (
             patch.object(ck, "find_colorspace_transform_request_type", return_value=req_type),
-            pytest.raises(ValueError, match="bad constructor"),
+            pytest.raises(NodeError, match="bad constructor"),
         ):
             ck.apply_ocio_or_local_srgb(linear, FakeColorParams())
 

@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-from griptape_nodes.exe_types.core_types import Parameter, ParameterMessage, ParameterMode
+from griptape_nodes.exe_types.core_types import NodeError, Parameter, ParameterMessage, ParameterMode
 from griptape_nodes.exe_types.node_types import AsyncResult, SuccessFailureNode
 from griptape_nodes.exe_types.param_components.huggingface.huggingface_repo_parameter import HuggingFaceRepoParameter
 from griptape_nodes.traits.file_system_picker import FileSystemPicker
@@ -499,7 +499,13 @@ class CorridorKeyVideoInference(SuccessFailureNode):
                 errors.extend(gvm_errors)
         elif hint_source == "videomama":
             if not self.parameter_values.get("mask_hint"):
-                errors.append(ValueError("mask_hint is required when hint_source is 'videomama'"))
+                errors.append(
+                    NodeError(
+                        "'Mask Hint' is required when 'Hint Source' is 'videomama'. Connect a mask video or image "
+                        "sequence, or choose another 'Hint Source'.",
+                        fields={"parameter": "mask_hint"},
+                    )
+                )
             unet_errors = self._videomama_unet_param.validate_before_node_run()
             if unet_errors:
                 errors.extend(unet_errors)
@@ -508,7 +514,7 @@ class CorridorKeyVideoInference(SuccessFailureNode):
                 errors.extend(base_errors)
 
         if not self.parameter_values.get("video"):
-            errors.append(ValueError("video is required"))
+            errors.append(NodeError("Connect a video to 'Video'.", fields={"parameter": "video"}))
 
         return errors if errors else None
 
@@ -520,7 +526,7 @@ class CorridorKeyVideoInference(SuccessFailureNode):
             self._do_inference()
         except Exception as exc:
             logger.exception("CorridorKey video inference failed")
-            self._set_status_results(was_successful=False, result_details=f"CorridorKey video inference failed: {exc}")
+            self._set_status_results(was_successful=False, result_details=str(exc))
             self._handle_failure_exception(exc)
             return
         self._set_status_results(was_successful=True, result_details="CorridorKey video inference complete")
@@ -615,7 +621,7 @@ class CorridorKeyVideoInference(SuccessFailureNode):
 
         video_value = self.parameter_values.get("video")
         if not video_value:
-            raise ValueError("video is required")
+            raise NodeError("Connect a video to 'Video'.", fields={"parameter": "video"})
 
         img_size: int = int(self.parameter_values.get("img_size") or 2048)
         input_is_linear: bool = bool(self.parameter_values.get("input_is_linear"))
@@ -628,7 +634,11 @@ class CorridorKeyVideoInference(SuccessFailureNode):
         color_mode = str(self.parameter_values.get("color_mode") or cc.COLOR_MODE_BASIC)
         color_params = self.parameter_values.get("color_params") if color_mode == cc.COLOR_MODE_OCIO else None
         if color_mode == cc.COLOR_MODE_OCIO and color_params is None:
-            raise ValueError("color_mode is 'ocio' but no color_params input is connected.")
+            raise NodeError(
+                "'Color Mode' is 'ocio' but nothing is connected to 'Color Params'. Connect an OCIO Color "
+                "Parameters node, or set 'Color Mode' to 'basic'.",
+                fields={"parameter": "color_params"},
+            )
         hint_source: str = self.parameter_values.get("hint_source", "birefnet")
         output_format: str = self.parameter_values.get("output_format", "video")
         output_frame_rate: float = float(self.parameter_values.get("output_frame_rate") or 24.0)
@@ -659,7 +669,10 @@ class CorridorKeyVideoInference(SuccessFailureNode):
             if max_frames is not None:
                 frame_paths = frame_paths[:max_frames]
             if not frame_paths:
-                raise ValueError("video contains no frames")
+                raise NodeError(
+                    "The video in 'Video' contains no frames. Connect a video with at least one frame.",
+                    fields={"parameter": "video"},
+                )
             frame_rate = detected_fps if detected_fps is not None else output_frame_rate
 
             birefnet_handler = None
@@ -675,7 +688,11 @@ class CorridorKeyVideoInference(SuccessFailureNode):
             elif hint_source == "videomama":
                 mask_value = self.parameter_values.get("mask_hint")
                 if not mask_value:
-                    raise ValueError("mask_hint is required when hint_source is 'videomama'")
+                    raise NodeError(
+                        "'Mask Hint' is required when 'Hint Source' is 'videomama'. Connect a mask video or image "
+                        "sequence, or choose another 'Hint Source'.",
+                        fields={"parameter": "mask_hint"},
+                    )
                 frame_paths, videomama_hint_frames = self._load_alpha_hint_frames_videomama(
                     frame_paths, mask_value, tmp_path
                 )

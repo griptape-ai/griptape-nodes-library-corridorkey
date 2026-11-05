@@ -10,6 +10,7 @@ import logging
 from typing import Any
 
 import numpy as np
+from griptape_nodes.exe_types.core_types import NodeError
 from griptape_nodes.retained_mode.griptape_nodes import GriptapeNodes
 
 logger = logging.getLogger("corridorkey_library")
@@ -74,8 +75,8 @@ def apply_ocio_or_local_srgb(rgb: np.ndarray, color_params: Any | None) -> tuple
         view = color_params.view
         config_path = color_params.config_path
     except AttributeError as e:
-        msg = f"color_params is missing a required attribute (source_colorspace, display, view, config_path): {e}"
-        raise ValueError(msg) from e
+        msg = f"The connected 'Color Params' is missing a required attribute (source_colorspace, display, view, config_path): {e}"
+        raise NodeError(msg) from e
 
     if not display or not view:
         # ColorspaceTransformRequest's own handler silently passes pixels through
@@ -91,10 +92,10 @@ def apply_ocio_or_local_srgb(rgb: np.ndarray, color_params: Any | None) -> tuple
     req_type = find_colorspace_transform_request_type()
     if req_type is None:
         msg = (
-            f"OCIO transform requested (source={source_colorspace!r}, display={display!r}, view={view!r}) "
-            "but the OpenColorIO library is not loaded. Load it, or switch color_mode to 'basic'."
+            "The OpenColorIO library is not loaded, so 'Color Mode' 'ocio' cannot run. Load the OpenColorIO library, or set "
+            "'Color Mode' to 'basic'."
         )
-        raise ValueError(msg)
+        raise NodeError(msg)
 
     try:
         req = req_type(
@@ -106,12 +107,12 @@ def apply_ocio_or_local_srgb(rgb: np.ndarray, color_params: Any | None) -> tuple
         )
         result = GriptapeNodes.handle_request(req)
     except TypeError as e:
-        msg = f"OCIO transform failed -- {e}"
-        raise ValueError(msg) from e
+        msg = f"The OCIO color transform failed: {e}"
+        raise NodeError(msg) from e
 
     if not result.succeeded():
-        msg = f"OCIO transform failed -- {result.result_details}"
-        raise ValueError(msg)
+        msg = f"The OCIO color transform failed: {result.result_details}"
+        raise NodeError(msg)
 
     logger.debug("OCIO: transform succeeded (%s -> %s/%s)", source_colorspace, display, view)
     return result.pixels, f"ocio:{source_colorspace}->{display}/{view}"  # type: ignore[attr-defined]

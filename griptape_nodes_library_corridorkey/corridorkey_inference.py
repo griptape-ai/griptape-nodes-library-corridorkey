@@ -1,7 +1,7 @@
 import logging
 
 from griptape.artifacts import ImageArtifact, ImageUrlArtifact
-from griptape_nodes.exe_types.core_types import Parameter, ParameterMessage, ParameterMode
+from griptape_nodes.exe_types.core_types import NodeError, Parameter, ParameterMessage, ParameterMode
 from griptape_nodes.exe_types.node_types import AsyncResult, SuccessFailureNode
 from griptape_nodes.exe_types.param_components.huggingface.huggingface_repo_parameter import HuggingFaceRepoParameter
 from griptape_nodes.traits.options import Options
@@ -278,7 +278,7 @@ class CorridorKeyInference(SuccessFailureNode):
                 errors.extend(birefnet_errors)
 
         if not self.parameter_values.get("image"):
-            errors.append(ValueError("image is required"))
+            errors.append(NodeError("Connect an image to 'Image'.", fields={"parameter": "image"}))
 
         return errors if errors else None
 
@@ -297,7 +297,7 @@ class CorridorKeyInference(SuccessFailureNode):
             self._do_inference()
         except Exception as exc:
             logger.exception("CorridorKey inference failed")
-            self._set_status_results(was_successful=False, result_details=f"CorridorKey inference failed: {exc}")
+            self._set_status_results(was_successful=False, result_details=str(exc))
             self._handle_failure_exception(exc)
             return
         self._set_status_results(was_successful=True, result_details="CorridorKey inference complete")
@@ -306,7 +306,7 @@ class CorridorKeyInference(SuccessFailureNode):
         # Read inputs.
         image_artifact = self.parameter_values.get("image")
         if not isinstance(image_artifact, (ImageArtifact, ImageUrlArtifact)):
-            raise ValueError("image is required")
+            raise NodeError("Connect an image to 'Image'.", fields={"parameter": "image"})
 
         alpha_hint_artifact = self.parameter_values.get("alpha_hint")
 
@@ -375,7 +375,11 @@ class CorridorKeyInference(SuccessFailureNode):
         color_mode = str(self.parameter_values.get("color_mode") or cc.COLOR_MODE_BASIC)
         color_params = self.parameter_values.get("color_params") if color_mode == cc.COLOR_MODE_OCIO else None
         if color_mode == cc.COLOR_MODE_OCIO and color_params is None:
-            raise ValueError("color_mode is 'ocio' but no color_params input is connected.")
+            raise NodeError(
+                "'Color Mode' is 'ocio' but nothing is connected to 'Color Params'. Connect an OCIO Color "
+                "Parameters node, or set 'Color Mode' to 'basic'.",
+                fields={"parameter": "color_params"},
+            )
         foreground_srgb, rgba_srgb = cc.build_foreground_and_rgba(rgba_out, color_params, fg_is_straight)
 
         self.parameter_output_values["alpha"] = ck.save_image_artifact(ck.encode_grayscale_png(alpha_out), "alpha")
