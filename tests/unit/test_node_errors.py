@@ -66,3 +66,34 @@ def test_failure_follows_failed_output_when_wired(image_node):
     image_node._run_inference()
     assert image_node.parameter_output_values["was_successful"] is False
     assert image_node.parameter_output_values["result_details"] == "Connect an image to 'Image'."
+
+
+@pytest.mark.parametrize(("parameter", "label"), [("video", "Video"), ("mask_hint", "Mask Hint")])
+def test_unsupported_frame_source_names_the_calling_parameter(tmp_path, parameter, label):
+    from griptape_nodes_library_corridorkey import corridorkey_common as ck
+
+    with pytest.raises(NodeError) as caught:
+        ck.resolve_source_to_frames(42, tmp_path, parameter, label)
+    assert f"'{label}' has an unsupported input" in str(caught.value)
+    assert caught.value.fields == {"parameter": parameter}
+
+
+@pytest.mark.parametrize(("parameter", "label"), [("video", "Video"), ("mask_hint", "Mask Hint")])
+def test_missing_frames_name_the_calling_parameter(tmp_path, parameter, label):
+    from griptape_nodes_library_corridorkey import corridorkey_common as ck
+
+    missing = str(tmp_path / "nothing.####.exr")
+    with pytest.raises(NodeError) as caught:
+        ck.resolve_source_to_frames(missing, tmp_path, parameter, label)
+    assert f"for '{label}'" in str(caught.value)
+    assert caught.value.fields == {"parameter": parameter}
+
+
+def test_both_callers_pass_their_own_parameter():
+    import inspect
+
+    from griptape_nodes_library_corridorkey import corridorkey_video_inference as vi
+
+    source = inspect.getsource(vi)
+    assert '"video", "Video"' in source
+    assert '"mask_hint", "Mask Hint"' in source

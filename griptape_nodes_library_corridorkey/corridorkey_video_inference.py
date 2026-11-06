@@ -572,7 +572,7 @@ class CorridorKeyVideoInference(SuccessFailureNode):
         """
         from VideoMaMaInferenceModule.inference import run_inference as videomama_run_inference
 
-        mask_paths, _ = ck.resolve_source_to_frames(mask_value, tmp_path / "mask_frames")
+        mask_paths, _ = ck.resolve_source_to_frames(mask_value, tmp_path / "mask_frames", "mask_hint", "Mask Hint")
         frame_count = min(len(frame_paths), len(mask_paths))
         if len(frame_paths) != len(mask_paths):
             logger.warning(
@@ -665,7 +665,9 @@ class CorridorKeyVideoInference(SuccessFailureNode):
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
-            frame_paths, detected_fps = ck.resolve_source_to_frames(video_value, tmp_path / "video_frames")
+            frame_paths, detected_fps = ck.resolve_source_to_frames(
+                video_value, tmp_path / "video_frames", "video", "Video"
+            )
             if max_frames is not None:
                 frame_paths = frame_paths[:max_frames]
             if not frame_paths:

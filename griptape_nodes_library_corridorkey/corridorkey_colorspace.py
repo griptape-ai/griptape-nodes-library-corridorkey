@@ -76,7 +76,7 @@ def apply_ocio_or_local_srgb(rgb: np.ndarray, color_params: Any | None) -> tuple
         config_path = color_params.config_path
     except AttributeError as e:
         msg = f"The connected 'Color Params' is missing a required attribute (source_colorspace, display, view, config_path): {e}"
-        raise NodeError(msg) from e
+        raise NodeError(msg, fields={"parameter": "color_params"}) from e
 
     if not display or not view:
         # ColorspaceTransformRequest's own handler silently passes pixels through
@@ -95,7 +95,7 @@ def apply_ocio_or_local_srgb(rgb: np.ndarray, color_params: Any | None) -> tuple
             "The OpenColorIO library is not loaded, so 'Color Mode' 'ocio' cannot run. Load the OpenColorIO library, or set "
             "'Color Mode' to 'basic'."
         )
-        raise NodeError(msg)
+        raise NodeError(msg, fields={"parameter": "color_mode"})
 
     try:
         req = req_type(
@@ -108,11 +108,11 @@ def apply_ocio_or_local_srgb(rgb: np.ndarray, color_params: Any | None) -> tuple
         result = GriptapeNodes.handle_request(req)
     except TypeError as e:
         msg = f"The OCIO color transform failed: {e}"
-        raise NodeError(msg) from e
+        raise NodeError(msg, fields={"parameter": "color_params"}) from e
 
     if not result.succeeded():
         msg = f"The OCIO color transform failed: {result.result_details}"
-        raise NodeError(msg)
+        raise NodeError(msg, fields={"parameter": "color_params"})
 
     logger.debug("OCIO: transform succeeded (%s -> %s/%s)", source_colorspace, display, view)
     return result.pixels, f"ocio:{source_colorspace}->{display}/{view}"  # type: ignore[attr-defined]
