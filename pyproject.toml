@@ -1,6 +1,6 @@
 [project]
 name = "griptape-nodes-library-corridorkey"
-version = "0.4.0"
+version = "0.5.0"
 description = "Griptape Nodes library wrapping the CorridorKey neural green/blue screen keying model."
 authors = [{ name = "Griptape, Inc.", email = "hello@griptape.ai" }]
 readme = "README.md"
@@ -25,7 +25,7 @@ build-backend = "hatchling.build"
 packages = ["griptape_nodes_library_corridorkey"]
 
 [dependency-groups]
-dev = ["pyright>=1.1.396", "pytest-asyncio>=0.21.0", "ruff>=0.8.0", "pytest", "griptape-nodes-engine"]
+dev = ["pyright>=1.1.396", "pytest-asyncio>=0.21.0", "ruff>=0.8.0", "pytest", "griptape-nodes-engine>=0.104.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

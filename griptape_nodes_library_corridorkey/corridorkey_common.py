@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 from griptape.artifacts import ImageArtifact, ImageUrlArtifact
 from griptape_nodes.common.sequences import MissingItemPolicy, NoTokenBehavior, Sequence, SequenceEntry
+from griptape_nodes.exe_types.core_types import NodeError
 from griptape_nodes.files.file import File
 from griptape_nodes.files.project_file import ProjectFileDestination
 from griptape_nodes.retained_mode.events.os_events import ScanSequencesRequest, ScanSequencesResultSuccess
@@ -417,8 +418,11 @@ def load_videomama_pipeline(unet_repo_id: str, base_repo_id: str, device: str):
     return pipeline
 
 
-def resolve_frame_paths(value) -> list[Path]:
-    """Resolve a Sequence, list, or raw path/pattern string into an ordered list of frame paths."""
+def resolve_frame_paths(value, parameter: str, label: str) -> list[Path]:
+    """Resolve a Sequence, list, or raw path/pattern string into an ordered list of frame paths.
+
+    `parameter` is the node parameter the value came from and `label` is its editor label, both used in errors.
+    """
     if isinstance(value, Sequence):
         return [Path(entry.path) for entry in value.entries]
 
@@ -449,12 +453,18 @@ def resolve_frame_paths(value) -> list[Path]:
             )
         )
         if not isinstance(result, ScanSequencesResultSuccess) or not result.has_entries:
-            raise ValueError(f"Could not resolve '{value}' to a frame sequence")
+            raise NodeError(
+                f"Could not find any frames at '{value}' for '{label}'. Check the path or sequence pattern.",
+                fields={"parameter": parameter},
+            )
         entries = [entry for sequence in result.sequences for entry in sequence.entries]
         entries.sort(key=lambda entry: entry.number)
         return [Path(entry.path) for entry in entries]
 
-    raise ValueError(f"Unsupported sequence value type: {type(value)}")
+    raise NodeError(
+        f"'{label}' has an unsupported input of type {type(value).__name__}. Connect a video, an image sequence, or a path.",
+        fields={"parameter": parameter},
+    )
 
 
 def materialize_video_as_sequence(video_path: str, out_dir: Path) -> tuple[list[Path], float]:
@@ -490,7 +500,7 @@ def materialize_frame_directory(frame_paths: list[Path], out_dir: Path) -> Path:
     return out_dir
 
 
-def resolve_source_to_frames(value, tmp_dir: Path) -> tuple[list[Path], float | None]:
+def resolve_source_to_frames(value, tmp_dir: Path, parameter: str, label: str) -> tuple[list[Path], float | None]:
     """Resolve a video-or-sequence parameter value into (frame_paths, fps_or_none)."""
     from griptape.artifacts import VideoUrlArtifact
 
@@ -498,7 +508,7 @@ def resolve_source_to_frames(value, tmp_dir: Path) -> tuple[list[Path], float | 
         video_path = File(value.value).resolve()
         return materialize_video_as_sequence(video_path, tmp_dir)
 
-    return resolve_frame_paths(value), None
+    return resolve_frame_paths(value, parameter, label), None
 
 
 def read_frame_rgb(path: Path) -> np.ndarray:
